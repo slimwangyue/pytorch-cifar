@@ -42,14 +42,16 @@ class VGG(nn.Module):
                     x_in = saved_variables[0]
                     w = conv2d_obj.weight
                     b = conv2d_obj.bias
+                    grads = inputs[0]
 
-                    # x_in_low = torch.from_numpy(quantize_weights_waste(x_in.astype('float32'), 8)).cuda()
-                    # w_low = torch.from_numpy(quantize_weights_waste(w.astype('float32'), 8)).cuda()
-                    # grads_low = torch.from_numpy(quantize_weights_waste(inputs[0].astype('float32'), 8)).cuda()
-
-                    x_in_low = x_in
-                    w_low = w
-                    grads_low = inputs[0]
+                    if x_in is not None and grads is not None:
+                        x_in_low = torch.from_numpy(quantize_weights_waste(x_in.cpu().numpy(), 32)).cuda()
+                        w_low = torch.from_numpy(quantize_weights_waste(w.cpu().numpy(), 32)).cuda()
+                        grads_low = torch.from_numpy(quantize_weights_waste(grads.cpu().numpy(), 32)).cuda()
+                    else:
+                        x_in_low = None
+                        w_low = None
+                        grads_low = None
 
                     if x_in is not None and w is not None:
                         x_grad = torch.nn.grad.conv2d_input(x_in_low.shape, w_low, grads_low,
@@ -95,23 +97,25 @@ def numba_quantize(feature_map, bit_precision):
     return (np.int32((feature_map + 1) / delta) * delta) - 1 - flag
 
 
-def quantize_weights_waste(feature_map, precision, norm_list=None, norm_list_true=None):
-    return feature_map.cpu().detach().numpy()
-
 # def quantize_weights_waste(feature_map, precision, norm_list=None, norm_list_true=None):
-#     shape = feature_map.shape
-#     # max_num = feature_map.cpu().detach().numpy().abs().max()
-#     max_num = np.abs(feature_map).max()
-#     if norm_list_true is not None:
-#        norm_list_true.append(max_num)
-#     norm = nearestpow2(max_num)
-#     if norm_list is not None:
-#        norm_list.append(norm)
-#     input_quan = feature_map
-#     input_quan = input_quan.astype(np.float32)
-#     fm_quan = numba_quantize((input_quan / norm).astype(np.float32), precision) * norm
-#     # tmp = torch.from_numpy(np.array(fm_quan).reshape(shape).astype(‘float32’)).cuda()
-#     return np.array(fm_quan).reshape(shape).astype('float32')
+#     return feature_map.cpu().detach().numpy()
+
+def quantize_weights_waste(feature_map, precision, norm_list=None, norm_list_true=None):
+    if precision == 32:
+        return feature_map
+    shape = feature_map.shape
+    # max_num = feature_map.cpu().detach().numpy().abs().max()
+    max_num = np.abs(feature_map).max()
+    if norm_list_true is not None:
+       norm_list_true.append(max_num)
+    norm = nearestpow2(max_num)
+    if norm_list is not None:
+       norm_list.append(norm)
+    input_quan = feature_map
+    input_quan = input_quan.astype(np.float32)
+    fm_quan = numba_quantize((input_quan / norm).astype(np.float32), precision) * norm
+    # tmp = torch.from_numpy(np.array(fm_quan).reshape(shape).astype('float32')).cuda()
+    return np.array(fm_quan).reshape(shape).astype('float32')
 
 
 def nearestpow2(x):
