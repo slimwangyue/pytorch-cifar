@@ -1,7 +1,8 @@
 '''VGG11/13/16/19 in Pytorch.'''
 import torch
 import torch.nn as nn
-from torch.autograd import Variable
+from numba import vectorize, cuda
+import numpy as np
 
 
 cfg = {
@@ -38,12 +39,23 @@ class VGG(nn.Module):
                     w_grad = None
                     bias_grad = None
                     x_in, w, b = saved_variables
+
+                    x_in_low = predict(x_in)
+                    w_low = predict(w)
+                    grads_low = predict(grads[0])
+
                     if x_in is not None and w is not None:
-                        x_grad = torch.nn.grad.conv2d_input(x_in.shape, w, grads[0], stride=conv2d_obj.stride, padding=conv2d_obj.padding)
+                        x_grad = torch.nn.grad.conv2d_input(x_in_low.shape, w_low, grads_low, stride=conv2d_obj.stride, padding=conv2d_obj.padding)
+                        x_grad = x_grad
+
                     if x_in is not None and w is not None:
-                        w_grad = torch.nn.grad.conv2d_weight(x_in, w.shape, grads[0], stride=conv2d_obj.stride, padding=conv2d_obj.padding)
+                        w_grad = torch.nn.grad.conv2d_weight(x_in_low, w_low.shape, grads_low, stride=conv2d_obj.stride, padding=conv2d_obj.padding)
+                        w_grad = (w_grad > 0).float() * 2 - 1
+                        w_grad = w_grad
+
                     if b is not None:
-                        bias_grad = torch.ones(b.shape, device=torch.device('cuda:0')) * torch.sum(grads[0], dim=(0, 2, 3))
+                        bias_grad = torch.ones(b.shape, device=torch.device('cuda:0')) * torch.sum(grads_low, dim=(0, 2, 3))
+
                     return x_grad, w_grad, bias_grad
 
                 tmp_conv2d.register_backward_hook(hookFunc)
@@ -63,3 +75,15 @@ def test():
     print(y.size())
 
 # test()
+
+
+@vectorize('float32(float32, int8)', target='cuda')
+def numba_quantize(feature_map, bit_precision):
+    flag = feature_map == 1
+    delta = 1 / pow(2, bit_precision - 1)
+    flag *= delta
+    return (np.int32((feature_map + 1) / delta) * delta) - 1 - flag
+
+
+def predict(tensor):
+    return tensor
