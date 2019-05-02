@@ -90,19 +90,22 @@ def numba_quantize(feature_map, bit_precision):
 
 
 def quantize_weights_waste(feature_map, precision, norm_list=None, norm_list_true=None):
-    shape = feature_map.shape
-    # max_num = feature_map.cpu().detach().numpy().abs().max()
-    max_num = np.abs(feature_map).max()
-    if norm_list_true is not None:
-       norm_list_true.append(max_num)
-    norm = nearestpow2(max_num)
-    if norm_list is not None:
-       norm_list.append(norm)
-    input_quan = feature_map
-    input_quan = input_quan.astype(np.float32)
-    fm_quan = numba_quantize((input_quan / norm).astype(np.float32), precision) * norm
-    # tmp = torch.from_numpy(np.array(fm_quan).reshape(shape).astype(‘float32’)).cuda()
-    return np.array(fm_quan).reshape(shape).astype('float32')
+    return feature_map.cpu().detach().numpy()
+
+# def quantize_weights_waste(feature_map, precision, norm_list=None, norm_list_true=None):
+#     shape = feature_map.shape
+#     # max_num = feature_map.cpu().detach().numpy().abs().max()
+#     max_num = np.abs(feature_map).max()
+#     if norm_list_true is not None:
+#        norm_list_true.append(max_num)
+#     norm = nearestpow2(max_num)
+#     if norm_list is not None:
+#        norm_list.append(norm)
+#     input_quan = feature_map
+#     input_quan = input_quan.astype(np.float32)
+#     fm_quan = numba_quantize((input_quan / norm).astype(np.float32), precision) * norm
+#     # tmp = torch.from_numpy(np.array(fm_quan).reshape(shape).astype(‘float32’)).cuda()
+#     return np.array(fm_quan).reshape(shape).astype('float32')
 
 
 def nearestpow2(x):
