@@ -48,13 +48,13 @@ class VGG(nn.Module):
                     if x_in is not None and w is not None:
                         x_grad = torch.nn.grad.conv2d_input(x_in_low.shape, w_low, grads_low,
                                                             stride=conv2d_obj.stride, padding=conv2d_obj.padding)
-                        x_grad = x_grad
+                        x_grad = torch.from_numpy(quantize_weights_waste(x_grad.astype('float32'), 8)).cuda()
 
                     if x_in is not None and w is not None:
                         w_grad = torch.nn.grad.conv2d_weight(x_in_low, w_low.shape, grads_low,
                                                              stride=conv2d_obj.stride, padding=conv2d_obj.padding)
                         w_grad = (w_grad > 0).float() * 2 - 1
-                        w_grad = w_grad
+                        w_grad = torch.from_numpy(quantize_weights_waste(w_grad.astype('float32'), 8)).cuda()
 
                     if b is not None:
                         bias_grad = torch.ones(b.shape, device=torch.device('cuda:0')) * torch.sum(grads_low,
