@@ -100,9 +100,9 @@ def train(epoch):
         total += targets.size(0)
         correct += predicted.eq(targets).sum().item()
 
-        if batch_idx % 1 == 0:
-            print('Loss: %.3f | Acc: %.3f%% (%d/%d)' % (
-            train_loss / (batch_idx + 1), 100. * correct / total, correct, total))
+        # if batch_idx % 1 == 0:
+        print('Loss: %.3f | Acc: %.3f%% (%d/%d)' % (
+        train_loss / (batch_idx + 1), 100. * correct / total, correct, total))
 
 def test(epoch):
     global best_acc

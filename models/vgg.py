@@ -34,27 +34,33 @@ class VGG(nn.Module):
             else:
                 tmp_conv2d = nn.Conv2d(in_channels, x, kernel_size=3, padding=1, bias=False)
 
-                def hookFunc(conv2d_obj, saved_variables, grads):
+                def hookFunc(conv2d_obj, saved_variables, inputs):
                     x_grad = None
                     w_grad = None
                     bias_grad = None
-                    x_in, w, b = saved_variables
 
-                    x_in_low = torch.from_numpy(quantize_weights_waste(x_in.astype('float32'), 8)).cuda()
-                    w_low = torch.from_numpy(quantize_weights_waste(w.astype('float32'), 8)).cuda()
-                    grads_low = torch.from_numpy(quantize_weights_waste(grads[0].astype('float32'), 8)).cuda()
+                    x_in = saved_variables[0]
+                    w = conv2d_obj.weight
+                    b = conv2d_obj.bias
 
+                    # x_in_low = torch.from_numpy(quantize_weights_waste(x_in.astype('float32'), 8)).cuda()
+                    # w_low = torch.from_numpy(quantize_weights_waste(w.astype('float32'), 8)).cuda()
+                    # grads_low = torch.from_numpy(quantize_weights_waste(inputs[0].astype('float32'), 8)).cuda()
+
+                    x_in_low = x_in
+                    w_low = w
+                    grads_low = inputs[0]
 
                     if x_in is not None and w is not None:
                         x_grad = torch.nn.grad.conv2d_input(x_in_low.shape, w_low, grads_low,
                                                             stride=conv2d_obj.stride, padding=conv2d_obj.padding)
-                        x_grad = torch.from_numpy(quantize_weights_waste(x_grad.astype('float32'), 8)).cuda()
+                        # x_grad = torch.from_numpy(quantize_weights_waste(x_grad.astype('float32'), 8)).cuda()
 
                     if x_in is not None and w is not None:
                         w_grad = torch.nn.grad.conv2d_weight(x_in_low, w_low.shape, grads_low,
                                                              stride=conv2d_obj.stride, padding=conv2d_obj.padding)
-                        w_grad = (w_grad > 0).float() * 2 - 1
-                        w_grad = torch.from_numpy(quantize_weights_waste(w_grad.astype('float32'), 8)).cuda()
+                        # w_grad = (w_grad > 0).float() * 2 - 1
+                        # w_grad = torch.from_numpy(quantize_weights_waste(w_grad.astype('float32'), 8)).cuda()
 
                     if b is not None:
                         bias_grad = torch.ones(b.shape, device=torch.device('cuda:0')) * torch.sum(grads_low,
