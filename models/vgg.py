@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 from numba import vectorize, cuda
 import numpy as np
-
+import math
 
 cfg = {
     'VGG11': [64, 'M', 128, 'M', 256, 256, 'M', 512, 512, 'M', 512, 512, 'M'],
@@ -20,8 +20,13 @@ class VGG(nn.Module):
         self.classifier = nn.Linear(512, 10)
 
     def forward(self, x):
-        out = self.features(x)
-        out = out.view(out.size(0), -1)
+        for i in range(54):
+            tmp = self.features._modules[str(i)]
+            if isinstance(tmp, nn.Conv2d):
+                tmp._tmp = x
+            x = tmp(x)
+        # out = self.features(x)
+        out = x.view(x.size(0), -1)
         out = self.classifier(out)
         return out
 
@@ -38,31 +43,42 @@ class VGG(nn.Module):
                     x_grad = None
                     w_grad = None
                     bias_grad = None
-                    x_in, w, b = saved_variables
 
-                    grads_low = saved_variables[0]
-                    w_low = conv2d_obj.weight
-                    x_in_low = predict(inputs[0])
+                    x_in = conv2d_obj._tmp
+                    w = conv2d_obj.weight
+                    b = conv2d_obj.bias
+                    grads = inputs[0]
+
+                    if x_in is not None and grads is not None:
+                        x_in_low = torch.from_numpy(quantize_weights_waste(x_in.cpu().numpy(), 32)).cuda()
+                        w_low = torch.from_numpy(quantize_weights_waste(w.cpu().numpy(), 32)).cuda()
+                        grads_low = torch.from_numpy(quantize_weights_waste(grads.cpu().numpy(), 32)).cuda()
+                    else:
+                        x_in_low = None
+                        w_low = None
+                        grads_low = None
+
+                    if x_in is not None and w is not None and saved_variables[0] is not None:
+                        x_grad = torch.nn.grad.conv2d_input(x_in_low.shape, w_low, grads_low,
+                                                            stride=conv2d_obj.stride, padding=conv2d_obj.padding)
 
                     if x_in is not None and w is not None:
-                        x_grad = torch.nn.grad.conv2d_input(x_in_low.shape, w_low, grads_low, stride=conv2d_obj.stride, padding=conv2d_obj.padding)
-                        x_grad = x_grad
-
-                    if x_in is not None and w is not None:
-                        w_grad = torch.nn.grad.conv2d_weight(x_in_low, w_low.shape, grads_low, stride=conv2d_obj.stride, padding=conv2d_obj.padding)
-                        w_grad = (w_grad > 0).float() * 2 - 1
-                        w_grad = w_grad
+                        w_grad = torch.nn.grad.conv2d_weight(x_in_low, w_low.shape, grads_low,
+                                                             stride=conv2d_obj.stride, padding=conv2d_obj.padding)
+                        # w_grad = (w_grad > 0).float() * 2 - 1
 
                     if b is not None:
-                        bias_grad = torch.ones(b.shape, device=torch.device('cuda:0')) * torch.sum(grads_low, dim=(0, 2, 3))
+                        bias_grad = torch.ones(b.shape, device=torch.device('cuda:0')) * torch.sum(grads_low,
+                                                                                                   dim=(0, 2, 3))
 
-                    return x_grad*0, w_grad*0, bias_grad
+                    return x_grad, w_grad, bias_grad
 
                 tmp_conv2d.register_backward_hook(hookFunc)
 
                 layers += [tmp_conv2d,
-                           #nn.BatchNorm2d(x),
-                           nn.ReLU(inplace=True)]
+                           nn.BatchNorm2d(x),
+                           nn.ReLU(inplace=True)
+                           ]
                 in_channels = x
         layers += [nn.AvgPool2d(kernel_size=1, stride=1)]
         return nn.Sequential(*layers)
@@ -85,5 +101,43 @@ def numba_quantize(feature_map, bit_precision):
     return (np.int32((feature_map + 1) / delta) * delta) - 1 - flag
 
 
-def predict(tensor):
-    return tensor
+# def quantize_weights_waste(feature_map, precision, norm_list=None, norm_list_true=None):
+#     return feature_map.cpu().detach().numpy()
+
+def quantize_weights_waste(feature_map, precision, norm_list=None, norm_list_true=None):
+    if precision == 32:
+        return feature_map
+    shape = feature_map.shape
+    # max_num = feature_map.cpu().detach().numpy().abs().max()
+    max_num = np.abs(feature_map).max()
+    if norm_list_true is not None:
+       norm_list_true.append(max_num)
+    norm = nearestpow2(max_num)
+    if norm_list is not None:
+       norm_list.append(norm)
+    input_quan = feature_map
+    input_quan = input_quan.astype(np.float32)
+    fm_quan = numba_quantize((input_quan / norm).astype(np.float32), precision) * norm
+    # tmp = torch.from_numpy(np.array(fm_quan).reshape(shape).astype('float32')).cuda()
+    return np.array(fm_quan).reshape(shape).astype('float32')
+
+
+def nearestpow2(x):
+    flag_nag = False
+    if x == 0:
+        return 0
+    if x < 0:
+        x = -x
+        flag_nag = True
+    tmp_ceil = 2**math.ceil(math.log2(x))
+    tmp_floor = 2**math.floor(math.log2(x))
+    if abs(tmp_ceil - x) > abs(tmp_floor - x):
+        if flag_nag:
+            return -tmp_floor
+        else:
+            return tmp_floor
+    else:
+        if flag_nag:
+            return -tmp_ceil
+        else:
+            return tmp_ceil
