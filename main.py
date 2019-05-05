@@ -18,6 +18,21 @@ from tensorboardX import SummaryWriter
 # from utils import progress_bar
 writer = SummaryWriter()
 
+
+def adjust_learning_rate(args, optimizer, epoch):
+    """ divide lr by 10 at 32k and 48k """
+    # if args.warm_up and (_iter < 400):
+    #     lr = 0.01
+    if 30 <= epoch < 60:
+        lr = args.lr * (args.lr ** 1)
+    elif epoch >= 60:
+        lr = args.lr * (args.lr ** 2)
+    else:
+        lr = args.lr
+    print('Iter [{}] learning rate = {}'.format(epoch, lr))
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = lr
+
 parser = argparse.ArgumentParser(description='PyTorch CIFAR10 Training')
 parser.add_argument('--lr', default=0.02, type=float, help='learning rate')
 parser.add_argument('--resume', '-r', action='store_true', help='resume from checkpoint')
@@ -145,19 +160,3 @@ for epoch in range(start_epoch, start_epoch+200):
     train(epoch)
     test(epoch)
 
-def adjust_learning_rate(args, optimizer, epoch):
-    """ divide lr by 10 at 32k and 48k """
-    # if args.warm_up and (_iter < 400):
-    #     lr = 0.01
-    if 30 <= epoch < 60:
-        lr = args.lr * (args.lr ** 1)
-    elif epoch >= 60:
-        lr = args.lr * (args.lr ** 2)
-    else:
-        lr = args.lr
-
-    if epoch % args.eval_every == 0:
-        print('Iter [{}] learning rate = {}'.format(epoch, lr))
-
-    for param_group in optimizer.param_groups:
-        param_group['lr'] = lr
