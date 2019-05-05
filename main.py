@@ -14,11 +14,12 @@ import os
 import argparse
 
 from models import *
+from tensorboardX import SummaryWriter
 # from utils import progress_bar
-
+writer = SummaryWriter()
 
 parser = argparse.ArgumentParser(description='PyTorch CIFAR10 Training')
-parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
+parser.add_argument('--lr', default=0.02, type=float, help='learning rate')
 parser.add_argument('--resume', '-r', action='store_true', help='resume from checkpoint')
 
 args = parser.parse_args()
@@ -103,6 +104,7 @@ def train(epoch):
         # if batch_idx % 1 == 0:
         print('Loss: %.3f | Acc: %.3f%% (%d/%d)' % (
         train_loss / (batch_idx + 1), 100. * correct / total, correct, total))
+    writer.add_scalar('data/train_error', 100 - (100. * correct / total), epoch)
 
 def test(epoch):
     global best_acc
@@ -121,6 +123,7 @@ def test(epoch):
             total += targets.size(0)
             correct += predicted.eq(targets).sum().item()
             print('Loss: %.3f | Acc: %.3f%% (%d/%d)' % (test_loss / (batch_idx + 1), 100. * correct / total, correct, total))
+    writer.add_scalar('data/test_error', 100 - (100. * correct / total), epoch)
 
     # Save checkpoint.
     acc = 100.*correct/total
