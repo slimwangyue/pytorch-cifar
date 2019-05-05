@@ -85,6 +85,7 @@ optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=5
 def train(epoch):
     print('\nEpoch: %d' % epoch)
     net.train()
+    adjust_learning_rate(args, optimizer, epoch)
     train_loss = 0
     correct = 0
     total = 0
@@ -143,3 +144,20 @@ def test(epoch):
 for epoch in range(start_epoch, start_epoch+200):
     train(epoch)
     test(epoch)
+
+def adjust_learning_rate(args, optimizer, epoch):
+    """ divide lr by 10 at 32k and 48k """
+    # if args.warm_up and (_iter < 400):
+    #     lr = 0.01
+    if 30 <= epoch < 60:
+        lr = args.lr * (args.lr ** 1)
+    elif epoch >= 60:
+        lr = args.lr * (args.lr ** 2)
+    else:
+        lr = args.lr
+
+    if epoch % args.eval_every == 0:
+        print('Iter [{}] learning rate = {}'.format(epoch, lr))
+
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = lr
