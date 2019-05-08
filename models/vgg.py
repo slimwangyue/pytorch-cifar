@@ -50,9 +50,9 @@ class VGG(nn.Module):
                     grads = inputs[0]
 
                     if x_in is not None and grads is not None:
-                        x_in_low = torch.from_numpy(quantize_weights_waste(x_in.cpu().numpy(), 32)).cuda()
-                        w_low = torch.from_numpy(quantize_weights_waste(w.cpu().numpy(), 32)).cuda()
-                        grads_low = torch.from_numpy(quantize_weights_waste(grads.cpu().numpy(), 8)).cuda()
+                        x_in_low = torch.from_numpy(quantize_weights_waste(x_in.cpu().numpy(), 8)).cuda()
+                        w_low = torch.from_numpy(quantize_weights_waste(w.cpu().numpy(), 8)).cuda()
+                        grads_low = torch.from_numpy(quantize_weights_waste(grads.cpu().numpy(), 32)).cuda()
                     else:
                         x_in_low = None
                         w_low = None
