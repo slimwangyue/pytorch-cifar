@@ -1,0 +1,57 @@
+{
+    "python.pythonPath": "C:\\Users\\xhchr\\Anaconda3\\python.exe",
+    "deploy":{
+        "packages": [
+            {
+                "name": "EfficientTraining",
+                "description": "Codes for efficient training",
+                "files": [
+                    "**/*.py",
+                ],
+                "exclude": [
+                    ".tags",
+                    ".git/**",
+                    "CACHE/**",
+                    "results/**",
+                    "data/**",
+                    "Data/**",
+                    "others/**",
+                    "__pycache__/**",
+                    ".deploy/**",
+                    ".vscode/**",
+                    "**/*.mat",
+                    "**/*.pyc",
+                    "**/*.npy",
+                    "**/*.npz",
+                    "**/*.pth",
+                    "**/*.tar",
+                ],
+
+                "button": {
+                    "text": "VITA1",
+                    "tooltip": "Click here to deploy to VITA2 server...",
+
+                    "targets": [ "VITA1" ]
+                }
+            }
+        ],
+        "targets": [
+            {
+                "type": "batch",
+                "name": "VITAs",
+                "description": "Deploys to all VITA servers",
+                "targets": ["VITA1", "VITA2", "VITA3"]
+            },
+            {
+                "type": "sftp",
+                "name": "VITA1",
+                "description": "Efficient codes on VITA1/hdd1",
+                "dir": "/hdd1/invert/efficient-training/pytorch-cifar",
+                "host": "vita1.cse.tamu.edu", "port": 22,
+                "user": "invert", "password": "johnson",
+
+                "checkBeforeDeploy": true,
+            }
+        ]
+    },
+}
