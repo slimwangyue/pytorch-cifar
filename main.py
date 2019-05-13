@@ -23,9 +23,9 @@ def adjust_learning_rate(args, optimizer, epoch):
     """ divide lr by 10 at 32k and 48k """
     # if args.warm_up and (_iter < 400):
     #     lr = 0.01
-    if 30 <= epoch < 60:
+    if 60 <= epoch < 90:
         lr = args.lr * (args.lr ** 1)
-    elif epoch >= 60:
+    elif epoch >= 90:
         lr = args.lr * (args.lr ** 2)
     else:
         lr = args.lr
@@ -34,7 +34,7 @@ def adjust_learning_rate(args, optimizer, epoch):
         param_group['lr'] = lr
 
 parser = argparse.ArgumentParser(description='PyTorch CIFAR10 Training')
-parser.add_argument('--lr', default=0.02, type=float, help='learning rate')
+parser.add_argument('--lr', default=0.002, type=float, help='learning rate')
 parser.add_argument('--resume', '-r', action='store_true', help='resume from checkpoint')
 
 args = parser.parse_args()
@@ -121,6 +121,7 @@ def train(epoch):
         print('Loss: %.3f | Acc: %.3f%% (%d/%d)' % (
         train_loss / (batch_idx + 1), 100. * correct / total, correct, total))
     writer.add_scalar('data/train_error', 100 - (100. * correct / total), epoch)
+
 
 def test(epoch):
     global best_acc

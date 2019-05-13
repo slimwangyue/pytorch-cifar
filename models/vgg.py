@@ -50,22 +50,44 @@ class VGG(nn.Module):
                     grads = inputs[0]
 
                     if x_in is not None and grads is not None:
-                        x_in_low = torch.from_numpy(quantize_weights_waste(x_in.cpu().numpy(), 32)).cuda()
-                        w_low = torch.from_numpy(quantize_weights_waste(w.cpu().numpy(), 32)).cuda()
-                        grads_low = torch.from_numpy(quantize_weights_waste(grads.cpu().numpy(), 8)).cuda()
+                        x_in_low = torch.from_numpy(quantize_weights_waste(x_in.cpu().numpy(), 8)).cuda()
+                        w_low = torch.from_numpy(quantize_weights_waste(w.cpu().numpy(), 8)).cuda()
+                        grads_low = torch.from_numpy(quantize_weights_waste(grads.cpu().numpy(), 32)).cuda()
+
+                        x_in_msb = torch.from_numpy(quantize_weights_waste(x_in.cpu().numpy(), 4)).cuda()
+                        w_msb = torch.from_numpy(quantize_weights_waste(w.cpu().numpy(), 4)).cuda()
+                        grads_msb = torch.from_numpy(quantize_weights_waste(grads.cpu().numpy(), 16)).cuda()
                     else:
                         x_in_low = None
                         w_low = None
                         grads_low = None
+                        x_in_msb = None
+                        w_msb = None
+                        grads_msb = None
 
                     if x_in is not None and w is not None and saved_variables[0] is not None:
                         x_grad = torch.nn.grad.conv2d_input(x_in_low.shape, w_low, grads_low,
                                                             stride=conv2d_obj.stride, padding=conv2d_obj.padding)
 
+                        x_grad_pred = torch.nn.grad.conv2d_input(x_in.shape, w, grads,
+                                                                 stride=conv2d_obj.stride, padding=conv2d_obj.padding)
+
                     if x_in is not None and w is not None:
-                        w_grad = torch.nn.grad.conv2d_weight(x_in_low, w_low.shape, grads_low,
+                        w_grad = torch.nn.grad.conv2d_weight(x_in, w.shape, grads,
                                                              stride=conv2d_obj.stride, padding=conv2d_obj.padding)
+
+                        w_grad_pred = torch.nn.grad.conv2d_weight(x_in_msb, w_msb.shape, grads_msb,
+                                                                  stride=conv2d_obj.stride, padding=conv2d_obj.padding)
+                        threshold = 0
+                        w_grad_pred_test = (w_grad_pred.abs() > threshold).float() * w_grad_pred +\
+                                           (w_grad_pred.abs() <= threshold).float() * w_grad
+                        # print(float((w_grad_pred.abs() <= threshold).sum()) / float((w_grad_pred.abs() <= threshold).numel()))
                         w_grad = (w_grad > 0).float() * 2 - 1
+                        w_grad_pred_test = (w_grad_pred_test > 0).float() * 2 - 1
+                        w_grad_pred = (w_grad_pred > 0).float() * 2 - 1
+                        # print('corrected error: ', float((w_grad_pred_test - w_grad).abs().sum()) / 2 / float(w_grad.numel()))
+                        # print('error: ', float((w_grad_pred - w_grad).abs().sum()) / 2 / float(w_grad.numel()))
+                        w_grad = w_grad_pred
 
                     if b is not None:
                         bias_grad = torch.ones(b.shape, device=torch.device('cuda:0')) * torch.sum(grads_low,
@@ -112,7 +134,12 @@ def quantize_weights_waste(feature_map, precision, norm_list=None, norm_list_tru
     max_num = np.abs(feature_map).max()
     if norm_list_true is not None:
        norm_list_true.append(max_num)
-    norm = nearestpow2(max_num)
+
+    if precision < 5:
+        norm = floor_quan(max_num)
+    else:
+        norm = nearestpow2(max_num)
+
     if norm_list is not None:
        norm_list.append(norm)
     input_quan = feature_map
@@ -141,3 +168,23 @@ def nearestpow2(x):
             return -tmp_ceil
         else:
             return tmp_ceil
+
+
+def floor_quan(x):
+    flag_nag = False
+    if x == 0:
+        return 0
+    if x < 0:
+        x = -x
+        flag_nag = True
+    tmp_floor = 2**math.floor(math.log2(x))
+    # if abs(tmp_ceil - x) > abs(tmp_floor - x):
+    if flag_nag:
+        return -tmp_floor
+    else:
+        return tmp_floor
+    # else:
+    #     if flag_nag:
+    #         return -tmp_ceil
+    #     else:
+    #         return tmp_ceil
