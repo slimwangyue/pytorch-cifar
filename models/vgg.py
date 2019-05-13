@@ -69,8 +69,8 @@ class VGG(nn.Module):
                         x_grad = torch.nn.grad.conv2d_input(x_in_low.shape, w_low, grads_low,
                                                             stride=conv2d_obj.stride, padding=conv2d_obj.padding)
 
-                        x_grad_pred = torch.nn.grad.conv2d_input(x_in.shape, w, grads,
-                                                                 stride=conv2d_obj.stride, padding=conv2d_obj.padding)
+                        # x_grad_pred = torch.nn.grad.conv2d_input(x_in.shape, w, grads,
+                        #                                          stride=conv2d_obj.stride, padding=conv2d_obj.padding)
 
                     if x_in is not None and w is not None:
                         w_grad = torch.nn.grad.conv2d_weight(x_in, w.shape, grads,
@@ -87,7 +87,7 @@ class VGG(nn.Module):
                         w_grad_pred = (w_grad_pred > 0).float() * 2 - 1
                         # print('corrected error: ', float((w_grad_pred_test - w_grad).abs().sum()) / 2 / float(w_grad.numel()))
                         # print('error: ', float((w_grad_pred - w_grad).abs().sum()) / 2 / float(w_grad.numel()))
-                        w_grad = w_grad_pred
+                        w_grad = w_grad_pred_test
 
                     if b is not None:
                         bias_grad = torch.ones(b.shape, device=torch.device('cuda:0')) * torch.sum(grads_low,
