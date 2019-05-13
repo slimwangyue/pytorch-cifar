@@ -54,9 +54,9 @@ class VGG(nn.Module):
                         w_low = torch.from_numpy(quantize_weights_waste(w.cpu().numpy(), 8)).cuda()
                         grads_low = torch.from_numpy(quantize_weights_waste(grads.cpu().numpy(), 32)).cuda()
 
-                        x_in_msb = torch.from_numpy(quantize_weights_waste(x_in.cpu().numpy(), 4)).cuda()
-                        w_msb = torch.from_numpy(quantize_weights_waste(w.cpu().numpy(), 4)).cuda()
-                        grads_msb = torch.from_numpy(quantize_weights_waste(grads.cpu().numpy(), 16)).cuda()
+                        x_in_msb = torch.from_numpy(quantize_weights_waste(x_in.cpu().numpy(), 4, floor=True)).cuda()
+                        w_msb = torch.from_numpy(quantize_weights_waste(w.cpu().numpy(), 4, floor=True)).cuda()
+                        grads_msb = torch.from_numpy(quantize_weights_waste(grads.cpu().numpy(), 16, floor=True)).cuda()
                     else:
                         x_in_low = None
                         w_low = None
@@ -126,7 +126,7 @@ def numba_quantize(feature_map, bit_precision):
 # def quantize_weights_waste(feature_map, precision, norm_list=None, norm_list_true=None):
 #     return feature_map.cpu().detach().numpy()
 
-def quantize_weights_waste(feature_map, precision, norm_list=None, norm_list_true=None):
+def quantize_weights_waste(feature_map, precision, norm_list=None, norm_list_true=None, floor=False):
     if precision == 32:
         return feature_map
     shape = feature_map.shape
@@ -135,7 +135,7 @@ def quantize_weights_waste(feature_map, precision, norm_list=None, norm_list_tru
     if norm_list_true is not None:
        norm_list_true.append(max_num)
 
-    if precision < 5:
+    if floor:
         norm = floor_quan(max_num)
     else:
         norm = nearestpow2(max_num)
