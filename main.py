@@ -67,7 +67,7 @@ classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship'
 
 # Model
 print('==> Building model..')
-net = VGG('VGG19')
+net = VGG('VGG19', writer)
 # net = ResNet18()
 # net = PreActResNet18()
 # net = GoogLeNet()
@@ -160,4 +160,3 @@ def test(epoch):
 for epoch in range(start_epoch, start_epoch+200):
     train(epoch)
     test(epoch)
-

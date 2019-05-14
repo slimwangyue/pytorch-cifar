@@ -14,10 +14,12 @@ cfg = {
 
 
 class VGG(nn.Module):
-    def __init__(self, vgg_name):
+    def __init__(self, vgg_name, writer=None):
         super(VGG, self).__init__()
         self.features = self._make_layers(cfg[vgg_name])
         self.classifier = nn.Linear(512, 10)
+        self.writer = writer
+        self.counter = 0
 
     def forward(self, x):
         for i in range(54):
@@ -78,9 +80,14 @@ class VGG(nn.Module):
 
                         w_grad_pred = torch.nn.grad.conv2d_weight(x_in_msb, w_msb.shape, grads_msb,
                                                                   stride=conv2d_obj.stride, padding=conv2d_obj.padding)
-                        threshold = 0
+                        threshold = 5e-4
                         w_grad_pred_test = (w_grad_pred.abs() > threshold).float() * w_grad_pred +\
                                            (w_grad_pred.abs() <= threshold).float() * w_grad
+                        self.writer.add_scalar('data/pred_error_' + str(threshold),
+                                               float((w_grad_pred.abs() <= threshold).sum()) /
+                                               float(w_grad_pred.numel()),
+                                               self.counter)
+                        self.counter += 1
                         # print(float((w_grad_pred.abs() <= threshold).sum()) / float((w_grad_pred.abs() <= threshold).numel()))
                         w_grad = (w_grad > 0).float() * 2 - 1
                         w_grad_pred_test = (w_grad_pred_test > 0).float() * 2 - 1
