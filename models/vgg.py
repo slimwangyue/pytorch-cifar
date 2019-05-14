@@ -80,7 +80,7 @@ class VGG(nn.Module):
 
                         w_grad_pred = torch.nn.grad.conv2d_weight(x_in_msb, w_msb.shape, grads_msb,
                                                                   stride=conv2d_obj.stride, padding=conv2d_obj.padding)
-                        threshold = 5e-4
+                        threshold = 1e-3
                         w_grad_pred_test = (w_grad_pred.abs() > threshold).float() * w_grad_pred +\
                                            (w_grad_pred.abs() <= threshold).float() * w_grad
                         self.writer.add_scalar('data/pred_error_' + str(threshold),
