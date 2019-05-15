@@ -1,3 +1,4 @@
 **/*.pyc
 .vscode/settings.json
 .tags
+.vscode/settings.json
