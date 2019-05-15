@@ -11,34 +11,13 @@ _DEFAULT_FLATTEN = (1, -1)
 _DEFAULT_FLATTEN_GRAD = (0, -1)
 
 
-def nearestpow2(x):
-    flag_nag = False
-    if x == 0:
-        return 0
-    if x < 0:
-        x = -x
-        flag_nag = True
-    tmp_ceil = 2 ** math.ceil(math.log2(x))
-    tmp_floor = 2 ** math.floor(math.log2(x))
-    if abs(tmp_ceil - x) > abs(tmp_floor - x):
-        if flag_nag:
-            return -tmp_floor
-        else:
-            return tmp_floor
-    else:
-        if flag_nag:
-            return -tmp_ceil
-        else:
-            return tmp_ceil
-
-
 def _deflatten_as(x, x_full):
     shape = list(x.shape) + [1] * (x_full.dim() - x.dim())
     return x.view(*shape)
 
 
 def calculate_qparams(x, num_bits, flatten_dims=_DEFAULT_FLATTEN, reduce_dim=0,
-                      reduce_type='mean', keepdim=False, true_zero=False):
+                      reduce_type='mean', keepdim=False):
     with torch.no_grad():
         x_flat_abs = x.abs().flatten(*flatten_dims)
         if x_flat_abs.dim() == 1:
@@ -50,9 +29,7 @@ def calculate_qparams(x, num_bits, flatten_dims=_DEFAULT_FLATTEN, reduce_dim=0,
                 max_values = max_values.mean(reduce_dim, keepdim=keepdim)
             else:
                 max_values = max_values.max(reduce_dim, keepdim=keepdim)[0]
-        # range_values = max_values
-        # return QParams(range=range_values, zero_point=0., num_bits=num_bits)
-        max_values = max_values[0].detach().cpu().item()
+        # max_values = max_values[0].detach().cpu().item()
         return QParams(max_values=max_values, num_bits=num_bits)
 
 
@@ -86,10 +63,12 @@ class FPQuantizeFunction(InplaceFunction):
         max_values = qparams.max_values
         min_values = - max_values if signed else 0.
         delta = (max_values - min_values) / 2.**num_bits
+        qmin, qmax = 0.0, 2**num_bits - 1
         with torch.no_grad():
-            output.clamp_(min_values, max_values)
-            max_locs = (output == max_values).float()
-            output.sub_(min_values).div_(delta).round_().sub_(max_locs)
+            # output.clamp_(min_values, max_values)
+            # max_locs = (output == max_values).float()
+            # output.sub_(min_values).div_(delta).round_().sub_(max_locs)
+            output.sub_(min_values).div_(delta).clamp_(qmin,qmax).round_()
 
             if dequantize:
                 output.mul_(delta).add_(min_values)

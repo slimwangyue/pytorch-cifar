@@ -83,8 +83,8 @@ class PredictiveSignConv2d(Conv2d):
 
     def forward(self, input):
         # See the autograd section for explanation of what happens here.
-        weight_qparams = calculate_qparams(
-            self.weight, num_bits=self.num_bits_weight, flatten_dims=(1, -1), reduce_dim=None)
+        weight_qparams = calculate_qparams(self.weight, num_bits=self.num_bits_weight,
+                                           flatten_dims=(1, -1), reduce_dim=None)
         qweight = quantize(self.weight, qparams=weight_qparams)
 
         if self.bias is not None:
