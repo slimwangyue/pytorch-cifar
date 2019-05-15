@@ -23,10 +23,10 @@ def adjust_learning_rate(args, optimizer, epoch):
     """ divide lr by 10 at 32k and 48k """
     # if args.warm_up and (_iter < 400):
     #     lr = 0.01
-    if 20 <= epoch < 60:
-        lr = args.lr * (0.1 ** 1)
-    elif epoch >= 60:
-        lr = args.lr * (0.1 ** 2)
+    if 60 <= epoch < 90:
+        lr = args.lr * (args.lr ** 1)
+    elif epoch >= 90:
+        lr = args.lr * (args.lr ** 2)
     else:
         lr = args.lr
     print('Iter [{}] learning rate = {}'.format(epoch, lr))
@@ -34,7 +34,7 @@ def adjust_learning_rate(args, optimizer, epoch):
         param_group['lr'] = lr
 
 parser = argparse.ArgumentParser(description='PyTorch CIFAR10 Training')
-parser.add_argument('--lr', default=0.001, type=float, help='learning rate')
+parser.add_argument('--lr', default=0.002, type=float, help='learning rate')
 parser.add_argument('--resume', '-r', action='store_true', help='resume from checkpoint')
 
 args = parser.parse_args()
@@ -67,7 +67,7 @@ classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship'
 
 # Model
 print('==> Building model..')
-net = VGG('VGG19')
+net = VGG('VGG19', writer)
 # net = ResNet18()
 # net = PreActResNet18()
 # net = GoogLeNet()
@@ -88,7 +88,7 @@ if args.resume:
     # Load checkpoint.
     print('==> Resuming from checkpoint..')
     assert os.path.isdir('checkpoint'), 'Error: no checkpoint directory found!'
-    checkpoint = torch.load('./checkpoint/ckpt_signSGD_x8bit.t7')
+    checkpoint = torch.load('./checkpoint/ckpt.t7')
     net.load_state_dict(checkpoint['net'])
     best_acc = checkpoint['acc']
     start_epoch = checkpoint['epoch']
@@ -121,9 +121,7 @@ def train(epoch):
         print('Loss: %.3f | Acc: %.3f%% (%d/%d)' % (
         train_loss / (batch_idx + 1), 100. * correct / total, correct, total))
     writer.add_scalar('data/train_error', 100 - (100. * correct / total), epoch)
-    writer.add_scalar('data/train_lr', args.lr, epoch)
-    for name, param in net.named_parameters():
-        writer.add_histogram(name, param.clone().cpu().data.numpy(), epoch)
+
 
 def test(epoch):
     global best_acc
@@ -162,4 +160,3 @@ def test(epoch):
 for epoch in range(start_epoch, start_epoch+200):
     train(epoch)
     test(epoch)
-
