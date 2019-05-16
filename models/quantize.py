@@ -20,6 +20,7 @@ def calculate_qparams(x, num_bits, flatten_dims=_DEFAULT_FLATTEN, reduce_dim=0,
                       reduce_type='mean', keepdim=False):
     with torch.no_grad():
         x_flat_abs = x.abs().flatten(*flatten_dims)
+        print(x_flat_abs.shape)
         if x_flat_abs.dim() == 1:
             max_values = _deflatten_as(x_flat_abs.max(), x)
         else:
@@ -29,7 +30,6 @@ def calculate_qparams(x, num_bits, flatten_dims=_DEFAULT_FLATTEN, reduce_dim=0,
                 max_values = max_values.mean(reduce_dim, keepdim=keepdim)
             else:
                 max_values = max_values.max(reduce_dim, keepdim=keepdim)[0]
-        # max_values = max_values[0].detach().cpu().item()
         return QParams(max_values=max_values, num_bits=num_bits)
 
 
@@ -56,8 +56,8 @@ class FPQuantizeFunction(InplaceFunction):
             output = input.clone()
 
         if qparams is None:
-            qparams = calculate_qparams(
-                output_abs, num_bits=num_bits, flatten_dims=flatten_dims, reduce_dim=reduce_dim)
+            qparams = calculate_qparams(output, num_bits=num_bits,
+                                        flatten_dims=flatten_dims, reduce_dim=reduce_dim)
 
         num_bits = qparams.num_bits
         max_values = qparams.max_values
