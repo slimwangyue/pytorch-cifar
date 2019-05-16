@@ -97,6 +97,7 @@ class PredictiveSignConv2dFunction(Function):
         # Calculate gradients w.r.t. bias, if needed
         if bias is not None and ctx.needs_input_grad[2]:
             grad_bias = bias.new_ones(bias.shape) * torch.sum(grad_output, dim=(0, 2, 3))
+            grad_bias.sign_()
 
         return (grad_input, grad_weight, grad_bias,
                 None, None, None, None, None, None, None, None, None)
