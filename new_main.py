@@ -13,16 +13,18 @@ import torchvision.transforms as transforms
 import os
 import argparse
 
-from models import *
+from models.new_vgg import VGG
 from tensorboardX import SummaryWriter
 # from utils import progress_bar
 
 parser = argparse.ArgumentParser(description='PyTorch CIFAR10 Training')
 parser.add_argument('--resume', '-r', action='store_true', help='resume from checkpoint')
-# Learning rate and scheduling
-parser.add_argument('--lr', default=0.002, type=float, help='learning rate')
+# Optimizer
+parser.add_argument('--lr', default=0.001, type=float, help='learning rate')
 parser.add_argument('--first_decay', default=60, type=int, help='epoch of first learning rate decay')
 parser.add_argument('--second_decay', default=90, type=int, help='epoch of second learning rate decay')
+parser.add_argument('--wd', default=5e-4, type=float, help='weight decay')
+parser.add_argument('--sgd_mm', default=0.0, type=float, help='momentum for SGD')
 # Quantization of input, weight, bias and grad
 parser.add_argument('--num_bits', default=8, type=int, help='precision of input/activation')
 parser.add_argument('--num_bits_weight', default=8, type=int, help='precision of weight')
@@ -95,7 +97,7 @@ if args.resume:
     start_epoch = checkpoint['epoch']
 
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=5e-4)
+optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=args.sgd_mm, weight_decay=args.wd)
 scheduler = optim.lr_scheduler.MultiStepLR(optimizer, [args.first_decay, args.second_decay],
                                            gamma=0.1, last_epoch=-1)
 
@@ -103,7 +105,7 @@ scheduler = optim.lr_scheduler.MultiStepLR(optimizer, [args.first_decay, args.se
 def train(epoch):
     print('\nEpoch: %d' % epoch)
     net.train()
-    adjust_learning_rate(args, optimizer, epoch)
+    # adjust_learning_rate(args, optimizer, epoch)
     train_loss = 0
     correct = 0
     total = 0

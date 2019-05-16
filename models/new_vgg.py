@@ -21,14 +21,18 @@ class VGG(nn.Module):
                  msb_bits, msb_bits_grad, msb_bits_weight, threshold,
                  writer=None):
         super(VGG, self).__init__()
-        self.features = self._make_layers(cfg[vgg_name])
-        self.classifier = nn.Linear(512, 10)
+        self.features = self._make_layers(
+            cfg[vgg_name],
+            num_bits, num_bits_weight, num_bits_bias, num_bits_grad,
+            msb_bits, msb_bits_grad, msb_bits_weight, threshold)
+        self.classifier = PredictiveSignLinear(
+            512, 10, num_bits_weight=num_bits_weight, num_bits_bias=num_bits_bias)
         # self.writer = writer
         self.counter = 0
 
     def forward(self, x):
         out = self.features(x)
-        out = x.view(x.size(0), -1)
+        out = out.view(out.size(0), -1)
         out = self.classifier(out)
         return out
 
