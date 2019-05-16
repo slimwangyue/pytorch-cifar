@@ -14,6 +14,7 @@ import os
 import argparse
 
 from models.new_vgg import VGG
+from models.new_resnet import cifar10_rnn_gate_74
 from tensorboardX import SummaryWriter
 # from utils import progress_bar
 
@@ -68,9 +69,11 @@ classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship'
 
 # Model
 print('==> Building model..')
-net = VGG('VGG19',
-          args.num_bits, args.num_bits_weight, args.num_bits_bias, args.num_bits_grad,
-          args.msb_bits, args.msb_bits_grad, args.msb_bits_weight, args.threshold)
+net = cifar10_rnn_gate_74(args.num_bits, args.num_bits_weight, args.num_bits_bias, args.num_bits_grad,
+                          args.msb_bits, args.msb_bits_grad, args.msb_bits_weight, args.threshold)
+# net = VGG('VGG19',
+#           args.num_bits, args.num_bits_weight, args.num_bits_bias, args.num_bits_grad,
+#           args.msb_bits, args.msb_bits_grad, args.msb_bits_weight, args.threshold)
 # net = ResNet18()
 # net = PreActResNet18()
 # net = GoogLeNet()
