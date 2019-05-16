@@ -105,7 +105,7 @@ class PredictiveSignConv2dFunction(Function):
 class PredictiveSignConv2d(Conv2d):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1,
                  padding=0, dilation=1, groups=1, bias=True, # the above two lines are the same as Conv2d
-                 num_bits_weight=8, num_bits_bias=8, # how the weight and the bias will be quantized
+                 num_bits_weight=8, num_bits_bias=16, # how the weight and the bias will be quantized
                  input_signed=False, # whether the input is signed or unsigned
                  msb_bits=4, msb_bits_weight=4, msb_bits_grad=16, threshold=5e-5): # used in `backward()`
         kernel_size = _pair(kernel_size)
@@ -146,5 +146,3 @@ class PredictiveSignConv2d(Conv2d):
         return PredictiveSignConv2dFunction.apply(
             input, qweight, qbias, self.stride, self.padding, self.dilation, self.groups,
             self.input_signed, self.msb_bits, self.msb_bits_weight, self.msb_bits_grad, self.threshold)
-
-

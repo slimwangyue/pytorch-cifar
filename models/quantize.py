@@ -20,7 +20,6 @@ def calculate_qparams(x, num_bits, flatten_dims=_DEFAULT_FLATTEN, reduce_dim=0,
                       reduce_type='mean', keepdim=False):
     with torch.no_grad():
         x_flat_abs = x.abs().flatten(*flatten_dims)
-        print(x_flat_abs.shape)
         if x_flat_abs.dim() == 1:
             max_values = _deflatten_as(x_flat_abs.max(), x)
         else:
@@ -192,7 +191,8 @@ class Quantize(nn.Module):
 class QLinear(nn.Linear):
     """docstring for QConv2d."""
 
-    def __init__(self, in_features, out_features, bias=True, num_bits=8, num_bits_weight=8, num_bits_grad=8, biprecision=True):
+    def __init__(self, in_features, out_features, bias=True,
+                 num_bits=8, num_bits_weight=8, num_bits_grad=8, biprecision=True):
         super(QLinear, self).__init__(in_features, out_features, bias)
         self.num_bits = num_bits
         self.num_bits_weight = num_bits_weight or num_bits
