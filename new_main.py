@@ -17,6 +17,9 @@ from models.new_vgg import VGG
 from tensorboardX import SummaryWriter
 # from utils import progress_bar
 
+def str2bool(s):
+    return s.lower() in ['true', '1', 'yes', 'y']
+
 parser = argparse.ArgumentParser(description='PyTorch CIFAR10 Training')
 parser.add_argument('--resume', '-r', action='store_true', help='resume from checkpoint')
 # Optimizer
@@ -30,11 +33,16 @@ parser.add_argument('--num_bits', default=8, type=int, help='precision of input/
 parser.add_argument('--num_bits_weight', default=8, type=int, help='precision of weight')
 parser.add_argument('--num_bits_bias', default=16, type=int, help='precision of bias')
 parser.add_argument('--num_bits_grad', default=32, type=int, help='precision of (layer) gradients')
-# Predictive sign SGD arguments
+# Predictive (sign) SGD arguments
+parser.add_argument('--predictive_forward', default=False, type=str2bool, help='use predictive net in forward pass')
+parser.add_argument('--predictive_backward', default=True, type=str2bool, help='use predictive net in backward pass')
 parser.add_argument('--msb_bits', default=5, type=int, help='precision of msb part of input')
 parser.add_argument('--msb_bits_weight', default=5, type=int, help='precision of msb part of weight')
+parser.add_argument('--msb_bits_bias', default=8, type=int, help='precision of msb part of (layer) gradient')
 parser.add_argument('--msb_bits_grad', default=16, type=int, help='precision of msb part of (layer) gradient')
 parser.add_argument('--threshold', default=5e-5, type=float, help='threshold to use full precision gradient calculation')
+parser.add_argument('--sparsify', default=False, type=str2bool, help='sparsify the gradients using predictive net method')
+parser.add_argument('--sign', default=True, type=str2bool, help='take sign before applying gradient')
 
 args = parser.parse_args()
 
@@ -70,7 +78,9 @@ classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship'
 print('==> Building model..')
 net = VGG('VGG19',
           args.num_bits, args.num_bits_weight, args.num_bits_bias, args.num_bits_grad,
-          args.msb_bits, args.msb_bits_grad, args.msb_bits_weight, args.threshold)
+          args.predictive_forward, args.predictive_backward,
+          args.msb_bits, args.msb_bits_weight, args.msb_bits_bias, args.msb_bits_grad,
+          args.threshold, args.sparsify, args.sign)
 # net = ResNet18()
 # net = PreActResNet18()
 # net = GoogLeNet()
