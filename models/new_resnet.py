@@ -10,8 +10,8 @@ from models.new_linear import PredictiveSignLinear
 from models.quantize import Quantize
 
 
-def conv3x3(in_planes, out_planes, num_bits_weight, num_bits_bias,
-            msb_bits, msb_bits_grad, msb_bits_weight, threshold, stride=1, input_signed=False):
+def conv3x3(in_planes, out_planes, num_bits_weight, num_bits_bias, msb_bits, msb_bits_grad,
+            msb_bits_weight, threshold, stride=1, input_signed=False):
     "3x3 convolution with padding"
     return PredictiveSignConv2d(in_planes, out_planes, kernel_size=3, padding=1, bias=False, stride=stride,
                                 num_bits_weight=num_bits_weight, num_bits_bias=num_bits_bias,
@@ -29,7 +29,7 @@ class BasicBlock(nn.Module):
                              msb_bits_grad, msb_bits_weight, threshold, stride=stride)
         self.bn1 = nn.BatchNorm2d(planes)
         self.relu = nn.ReLU(inplace=True)
-        self.conv1 = conv3x3(inplanes, planes, num_bits_weight, num_bits_bias, msb_bits,
+        self.conv2 = conv3x3(planes, planes, num_bits_weight, num_bits_bias, msb_bits,
                              msb_bits_grad, msb_bits_weight, threshold)
         self.bn2 = nn.BatchNorm2d(planes)
         self.downsample = downsample
@@ -66,7 +66,7 @@ def repackage_hidden(h):
     """ to reduce memory usage"""
     if h is None:
         return None
-    if type(h) == Variable:
+    if isinstance(h, Variable):
         return Variable(h.data)
     else:
         return tuple(repackage_hidden(v) for v in h)
@@ -167,7 +167,7 @@ class ResNetRecurrentGateSP(nn.Module):
         # define recurrent gating module
         self.avgpool = nn.AvgPool2d(8)
         # self.fc = nn.Linear(64 * block.expansion, num_classes)
-        self.fc = PredictiveSignLinear(512, 10, num_bits_weight=num_bits_weight, num_bits_bias=num_bits_bias)
+        self.fc = PredictiveSignLinear(64 * block.expansion, num_classes, num_bits_weight=num_bits_weight, num_bits_bias=num_bits_bias)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -201,8 +201,7 @@ class ResNetRecurrentGateSP(nn.Module):
             setattr(self, 'group{}_gate{}'.format(group_id, i), meta[2])
 
     def _make_layer_v2(self, block, planes, num_bits, num_bits_weight, num_bits_bias, num_bits_grad,
-                       msb_bits, msb_bits_grad, msb_bits_weight, threshold,
-                       stride=1, pool_size=16):
+                       msb_bits, msb_bits_grad, msb_bits_weight, threshold, stride=1, pool_size=16):
         """ create one block and optional a gate module """
         downsample = None
         if stride != 1 or self.inplanes != planes * block.expansion:
@@ -212,9 +211,8 @@ class ResNetRecurrentGateSP(nn.Module):
                 nn.BatchNorm2d(planes * block.expansion),
 
             )
-
-        layer = block(self.inplanes, planes, stride, num_bits, num_bits_weight, num_bits_bias, num_bits_grad,
-                      msb_bits, msb_bits_grad, msb_bits_weight, threshold, downsample)
+        layer = block(self.inplanes, planes, num_bits, num_bits_weight, num_bits_bias, num_bits_grad,
+                      msb_bits, msb_bits_grad, msb_bits_weight, threshold, stride, downsample)
 
         self.inplanes = planes * block.expansion
 

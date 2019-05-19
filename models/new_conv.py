@@ -109,10 +109,10 @@ class PredictiveSignConv2d(Conv2d):
                  num_bits_weight=8, num_bits_bias=16, # how the weight and the bias will be quantized
                  input_signed=False, # whether the input is signed or unsigned
                  msb_bits=4, msb_bits_weight=4, msb_bits_grad=16, threshold=5e-5): # used in `backward()`
-        kernel_size = _pair(kernel_size)
-        stride = _pair(stride)
-        padding = _pair(padding)
-        dilation = _pair(dilation)
+        kernel_size = _pair(int(kernel_size))
+        stride = _pair(int(stride))
+        padding = _pair(int(padding))
+        dilation = _pair(int(dilation))
         super(PredictiveSignConv2d, self).__init__(
             in_channels, out_channels, kernel_size,
             stride, padding, dilation, groups, bias)
