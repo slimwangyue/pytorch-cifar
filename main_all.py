@@ -129,17 +129,32 @@ def parse_args():
                         help='coefficient')
     parser.add_argument('--minimum', default=100, type=float,
                         help='minimum')
-    parser.add_argument('--num_bits', default=8, type=int, help='precision of input/activation')
-    parser.add_argument('--num_bits_weight', default=8, type=int, help='precision of weight')
-    parser.add_argument('--num_bits_bias', default=16, type=int, help='precision of bias')
-    parser.add_argument('--num_bits_grad', default=32, type=int, help='precision of (layer) gradients')
-    # Predictive sign SGD arguments
-    parser.add_argument('--msb_bits', default=5, type=int, help='precision of msb part of input')
-    parser.add_argument('--msb_bits_weight', default=5, type=int, help='precision of msb part of weight')
-    parser.add_argument('--msb_bits_grad', default=16, type=int, help='precision of msb part of (layer) gradient')
+    # Quantization of input, weight, bias and grad
+    parser.add_argument('--num_bits', default=8, type=int,
+                        help='precision of input/activation')
+    parser.add_argument('--num_bits_weight', default=8, type=int,
+                        help='precision of weight')
+    parser.add_argument('--num_bits_grad', default=32, type=int,
+                        help='precision of (layer) gradients')
+    parser.add_argument('--biprecision', default=False, type=str2bool,
+                        help='use biprecision or not')
+    # Predictive (sign) SGD arguments
+    parser.add_argument('--predictive_forward', default=False, type=str2bool,
+                        help='use predictive net in forward pass')
+    parser.add_argument('--predictive_backward', default=True, type=str2bool,
+                        help='use predictive net in backward pass')
+    parser.add_argument('--msb_bits', default=4, type=int,
+                        help='precision of msb part of input')
+    parser.add_argument('--msb_bits_weight', default=4, type=int,
+                        help='precision of msb part of weight')
+    parser.add_argument('--msb_bits_grad', default=16, type=int,
+                        help='precision of msb part of (layer) gradient')
     parser.add_argument('--threshold', default=5e-5, type=float,
                         help='threshold to use full precision gradient calculation')
-
+    parser.add_argument('--sparsify', default=False, type=str2bool,
+                        help='sparsify the gradients using predictive net method')
+    parser.add_argument('--sign', default=True, type=str2bool,
+                        help='take sign before applying gradient')
     args = parser.parse_args()
     return args
 
@@ -148,6 +163,21 @@ skip_count = 0
 
 def main():
     args = parse_args()
+
+    args.signsgd_config = {
+        'num_bits': args.num_bits,
+        'num_bits_weight': args.num_bits_weight,
+        'num_bits_grad': args.num_bits_grad,
+        'biprecision': args.biprecision,
+        'predictive_forward': args.predictive_forward,
+        'predictive_backward': args.predictive_backward,
+        'msb_bits': args.msb_bits,
+        'msb_bits_weight': args.msb_bits_weight,
+        'msb_bits_grad': args.msb_bits_grad,
+        'threshold': args.threshold,
+        'sparsify': args.sparsify,
+        'sign': args.sign,
+    }
 
     save_path = args.save_path = os.path.join(args.save_folder, args.arch)
     os.makedirs(save_path, exist_ok=True)
@@ -242,8 +272,7 @@ def translate(dest, src):
 
 def run_training(args):
     # create model
-    model = cifar10_rnn_gate_74(args.num_bits, args.num_bits_weight, args.num_bits_bias, args.num_bits_grad,
-                                args.msb_bits, args.msb_bits_grad, args.msb_bits_weight, args.threshold)
+    model = cifar10_rnn_gate_74(**args.signsgd_config)
     # for m in model.parameters():
     #     m.requires_grad = False
     # for m in model.fc.parameters():

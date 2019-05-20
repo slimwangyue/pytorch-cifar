@@ -5,37 +5,68 @@ from torch.autograd import Variable
 import torch.autograd as autograd
 import numpy as np
 import scipy.misc
-from models.new_conv import PredictiveSignConv2d
-from models.new_linear import PredictiveSignLinear
-from models.quantize import Quantize
+
+from conv import PredictiveConv2d
+
+NUM_BITS = 8
+NUM_BITS_WEIGHT = 8
+NUM_BITS_GRAD = None,
+
+BIPRECISION = False
+PREDICTIVE_FORWARD = False
+PREDICTIVE_BACKWARD = True
+MSB_BITS = 4
+MSB_BITS_WEIGHT = 4
+MSB_BITS_GRAD = 16
+
+THRESHOLD = 5e-5
+SPARSIFY = False
+SIGN = True
+WRITER = None
 
 
-def conv3x3(in_planes, out_planes, num_bits_weight, num_bits_bias, msb_bits, msb_bits_grad,
-            msb_bits_weight, threshold, stride=1, input_signed=False):
+def conv1x1(in_planes, out_planes, stride=1,
+            input_signed=True, predictive_forward=True, writer_prefix=""):
+    "1x1 convolution with no padding"
+    predictive_forward = PREDICTIVE_FORWARD and predictive_forward
+    return PredictiveConv2d(
+        in_planes, out_planes, kernel_size=1, stride=stride, padding=0, bias=False,
+        num_bits=NUM_BITS, num_bits_weight=NUM_BITS_WEIGHT, num_bits_grad=NUM_BITS_GRAD,
+        biprecision=BIPRECISION, input_signed=input_signed,
+        predictive_forward=predictive_forward, predictive_backward=PREDICTIVE_BACKWARD,
+        msb_bits=MSB_BITS, msb_bits_weight=MSB_BITS_WEIGHT, msb_bits_grad=MSB_BITS_GRAD,
+        threshold=THRESHOLD, sparsify=SPARSIFY, sign=SIGN,
+        writer=WRITER, writer_prefix=writer_prefix)
+
+
+def conv3x3(in_planes, out_planes, stride=1,
+            input_signed=False, predictive_forward=True, writer_prefix=""):
     "3x3 convolution with padding"
-    return PredictiveSignConv2d(in_planes, out_planes, kernel_size=3, padding=1, bias=False, stride=stride,
-                                num_bits_weight=num_bits_weight, num_bits_bias=num_bits_bias,
-                                input_signed=input_signed, msb_bits=msb_bits, msb_bits_weight=msb_bits_weight,
-                                msb_bits_grad=msb_bits_grad, threshold=threshold)
+    predictive_forward = PREDICTIVE_FORWARD and predictive_forward
+    return PredictiveConv2d(
+        in_planes, out_planes, kernel_size=3, stride=stride, padding=1, bias=False,
+        num_bits=NUM_BITS, num_bits_weight=NUM_BITS_WEIGHT, num_bits_grad=NUM_BITS_GRAD,
+        biprecision=BIPRECISION, input_signed=input_signed,
+        predictive_forward=predictive_forward, predictive_backward=PREDICTIVE_BACKWARD,
+        msb_bits=MSB_BITS, msb_bits_weight=MSB_BITS_WEIGHT, msb_bits_grad=MSB_BITS_GRAD,
+        threshold=THRESHOLD, sparsify=SPARSIFY, sign=SIGN,
+        writer=WRITER, writer_prefix=writer_prefix)
 
 
 class BasicBlock(nn.Module):
     expansion = 1
 
-    def __init__(self, inplanes, planes, num_bits, num_bits_weight, num_bits_bias, num_bits_grad, msb_bits,
-                 msb_bits_grad, msb_bits_weight, threshold, stride=1, downsample=None):
+    def __init__(self, inplanes, planes, stride=1, downsample=None):
         super(BasicBlock, self).__init__()
-        self.conv1 = conv3x3(inplanes, planes, num_bits_weight, num_bits_bias, msb_bits,
-                             msb_bits_grad, msb_bits_weight, threshold, stride=stride)
+        self.conv1 = conv3x3(inplanes, planes, stride, input_signed=False,
+                             predictive_forward=False)
         self.bn1 = nn.BatchNorm2d(planes)
         self.relu = nn.ReLU(inplace=True)
-        self.conv2 = conv3x3(planes, planes, num_bits_weight, num_bits_bias, msb_bits,
-                             msb_bits_grad, msb_bits_weight, threshold)
+        self.conv2 = conv3x3(planes, planes, input_signed=False,
+                             predictive_forward=False)
         self.bn2 = nn.BatchNorm2d(planes)
         self.downsample = downsample
         self.stride = stride
-        self.act_quant = Quantize(num_bits=num_bits, num_bits_grad=num_bits_grad, shape_measure=(1, 1, 1, 1,),
-                                  dequantize=True, signed=False, stochastic=False, momentum=0.1)
 
     def forward(self, x):
         residual = x
@@ -43,7 +74,6 @@ class BasicBlock(nn.Module):
         out = self.conv1(x)
         out = self.bn1(out)
         out = self.relu(out)
-        out = self.act_quant(out)
 
         out = self.conv2(out)
         out = self.bn2(out)
@@ -53,7 +83,6 @@ class BasicBlock(nn.Module):
 
         out += residual
         out = self.relu(out)
-        out = self.act_quant(out)
         return out
 
 ########################################
@@ -139,38 +168,29 @@ class RNNGate(nn.Module):
 
 class ResNetRecurrentGateSP(nn.Module):
     """SkipNet with Recurrent Gate Model"""
-    def __init__(self, block, layers,
-                 num_bits, num_bits_weight, num_bits_bias, num_bits_grad,
-                 msb_bits, msb_bits_grad, msb_bits_weight, threshold,
-                 writer=None,
-                 num_classes=10, embed_dim=10,
+    def __init__(self, block, layers, num_classes=10, embed_dim=10,
                  hidden_dim=10, gate_type='rnn'):
         self.inplanes = 16
         super(ResNetRecurrentGateSP, self).__init__()
 
         self.num_layers = layers
-        self.conv1 = conv3x3(3, 16, num_bits_weight, num_bits_bias, msb_bits, msb_bits_grad, msb_bits_weight,
-                             threshold, stride=1, input_signed=True)
+        self.conv1 = conv3x3(3, 16, input_signed=True, predictive_forward=False)
         self.bn1 = nn.BatchNorm2d(16)
         self.relu = nn.ReLU(inplace=True)
 
         self.embed_dim = embed_dim
         self.hidden_dim = hidden_dim
 
-        self._make_group(block, 16, layers[0], num_bits, num_bits_weight, num_bits_bias, num_bits_grad,
-                         msb_bits, msb_bits_grad, msb_bits_weight, threshold, group_id=1, pool_size=32)
-        self._make_group(block, 32, layers[1], num_bits, num_bits_weight, num_bits_bias, num_bits_grad,
-                         msb_bits, msb_bits_grad, msb_bits_weight, threshold, group_id=2, pool_size=16)
-        self._make_group(block, 64, layers[2], num_bits, num_bits_weight, num_bits_bias, num_bits_grad,
-                         msb_bits, msb_bits_grad, msb_bits_weight, threshold, group_id=3, pool_size=8)
+        self._make_group(block, 16, layers[0], group_id=1, pool_size=32)
+        self._make_group(block, 32, layers[1], group_id=2, pool_size=16)
+        self._make_group(block, 64, layers[2], group_id=3, pool_size=8)
 
         # define recurrent gating module
         self.avgpool = nn.AvgPool2d(8)
-        # self.fc = nn.Linear(64 * block.expansion, num_classes)
-        self.fc = PredictiveSignLinear(64 * block.expansion, num_classes, num_bits_weight=num_bits_weight, num_bits_bias=num_bits_bias)
+        self.fc = nn.Linear(64 * block.expansion, num_classes)
 
         for m in self.modules():
-            if isinstance(m, nn.Conv2d):
+            if isinstance(m, [nn.Conv2d, PredictiveConv2d]):
                 n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
                 m.weight.data.normal_(0, math.sqrt(2. / n))
             elif isinstance(m, nn.BatchNorm2d):
@@ -183,8 +203,7 @@ class ResNetRecurrentGateSP(nn.Module):
     def install_gate(self):
         self.control = RNNGate(self.embed_dim, self.hidden_dim, rnn_type='lstm', output_channel=1)
 
-    def _make_group(self, block, planes, layers, num_bits, num_bits_weight, num_bits_bias, num_bits_grad,
-                    msb_bits, msb_bits_grad, msb_bits_weight, threshold, group_id=1, pool_size=16):
+    def _make_group(self, block, planes, layers, group_id=1, pool_size=16):
         """ Create the whole group"""
         for i in range(layers):
             if group_id > 1 and i == 0:
@@ -192,36 +211,36 @@ class ResNetRecurrentGateSP(nn.Module):
             else:
                 stride = 1
 
-            meta = self._make_layer_v2(block, planes, num_bits, num_bits_weight, num_bits_bias, num_bits_grad,
-                                       msb_bits, msb_bits_grad, msb_bits_weight, threshold, stride=stride,
+            meta = self._make_layer_v2(block, planes, stride=stride,
                                        pool_size=pool_size)
 
             setattr(self, 'group{}_ds{}'.format(group_id, i), meta[0])
             setattr(self, 'group{}_layer{}'.format(group_id, i), meta[1])
             setattr(self, 'group{}_gate{}'.format(group_id, i), meta[2])
 
-    def _make_layer_v2(self, block, planes, num_bits, num_bits_weight, num_bits_bias, num_bits_grad,
-                       msb_bits, msb_bits_grad, msb_bits_weight, threshold, stride=1, pool_size=16):
+    def _make_layer_v2(self, block, planes, stride=1, pool_size=16):
         """ create one block and optional a gate module """
         downsample = None
         if stride != 1 or self.inplanes != planes * block.expansion:
             downsample = nn.Sequential(
-                nn.Conv2d(self.inplanes, planes * block.expansion,
-                          kernel_size=1, stride=stride, bias=False),
+                conv1x1(self.inplanes, planes * block.expansion, stride=stride,
+                        input_signed=False, predictive_forward=False),
+                # nn.Conv2d(self.inplanes, planes * block.expansion,
+                #           kernel_size=1, stride=stride, bias=False),
                 nn.BatchNorm2d(planes * block.expansion),
-
             )
-        layer = block(self.inplanes, planes, num_bits, num_bits_weight, num_bits_bias, num_bits_grad,
-                      msb_bits, msb_bits_grad, msb_bits_weight, threshold, stride, downsample)
+        layer = block(self.inplanes, planes, stride, downsample)
 
         self.inplanes = planes * block.expansion
 
         gate_layer = nn.Sequential(
             nn.AvgPool2d(pool_size),
-            nn.Conv2d(in_channels=planes * block.expansion,
-                      out_channels=self.embed_dim,
-                      kernel_size=1,
-                      stride=1))
+            conv1x1(self.inplanes, planes * block.expansion, stride=stride,
+                        input_signed=False, predictive_forward=False)
+            # nn.Conv2d(in_channels=planes * block.expansion,
+            #           out_channels=self.embed_dim,
+            #           kernel_size=1,
+            #           stride=1))
         if downsample:
             return downsample, layer, gate_layer
         else:
@@ -298,12 +317,52 @@ def cifar10_rnn_gate_38(pretrained=False, **kwargs):
     return model
 
 
-def cifar10_rnn_gate_74(num_bits, num_bits_weight, num_bits_bias, num_bits_grad, msb_bits,
-                        msb_bits_grad, msb_bits_weight, threshold, pretrained=False, **kwargs):
+def cifar10_rnn_gate_74(pretrained=False, **kwargs):
     """SkipNet-74 with Recurrent Gate"""
-    model = ResNetRecurrentGateSP(BasicBlock, [12, 12, 12], num_bits, num_bits_weight, num_bits_bias,
-                                  num_bits_grad, msb_bits, msb_bits_grad, msb_bits_weight, threshold,
-                                  num_classes=10, embed_dim=10, hidden_dim=10)
+
+    global NUM_BITS
+    global NUM_BITS_WEIGHT
+    global NUM_BITS_GRAD
+    global BIPRECISION
+    global PREDICTIVE_FORWARD
+    global PREDICTIVE_BACKWARD
+    global MSB_BITS
+    global MSB_BITS_WEIGHT
+    global MSB_BITS_GRAD
+    global THRESHOLD
+    global SPARSIFY
+    global SIGN
+    global WRITER
+
+    print('num_bits:', kwargs['num_bits'])
+    print('num_bits_weight:', kwargs['num_bits_weight'])
+    print('num_bits_grad:', kwargs['num_bits_grad'])
+    print('biprecision:', kwargs['biprecision'])
+    print('predictive_forward:', kwargs['predictive_forward'])
+    print('predictive_backward:', kwargs['predictive_backward'])
+    print('msb_bits:', kwargs['msb_bits'])
+    print('msb_bits_weight:', kwargs['msb_bits_weight'])
+    print('msb_bits_grad:', kwargs['msb_bits_grad'])
+    print('threshold:', kwargs['threshold'])
+    print('sparsify:', kwargs['sparsify'])
+    print('sign:', kwargs['sign'])
+
+    NUM_BITS = kwargs.pop('num_bits', 8)
+    NUM_BITS_WEIGHT = kwargs.pop('num_bits_weight', 8)
+    NUM_BITS_GRAD = kwargs.pop('num_bits_grad', None)
+    BIPRECISION = kwargs.pop('biprecision', False)
+    PREDICTIVE_FORWARD = kwargs.pop('predictive_forward', False)
+    PREDICTIVE_BACKWARD = kwargs.pop('predictive_backward', True)
+    MSB_BITS = kwargs.pop('msb_bits', 4)
+    MSB_BITS_WEIGHT = kwargs.pop('msb_bits_weight', 4)
+    MSB_BITS_GRAD = kwargs.pop('msb_bits_grad', 16)
+    THRESHOLD = kwargs.pop('threshold', 5e-4)
+    SPARSIFY = kwargs.pop('sparsify', False)
+    SIGN = kwargs.pop('sign', True)
+    WRITER = None
+
+    model = ResNetRecurrentGateSP(BasicBlock, [12, 12, 12], num_classes=10,
+                                  embed_dim=10, hidden_dim=10)
     return model
 
 

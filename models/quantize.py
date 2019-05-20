@@ -60,9 +60,10 @@ class FPQuantizeFunction(InplaceFunction):
 
         num_bits = qparams.num_bits
         max_values = qparams.max_values
-        min_values = - max_values if signed else 0.
-        delta = (max_values - min_values) / (2.**num_bits - 1)
-        qmin, qmax = 0.0, 2**num_bits - 1
+        min_values = (- 1. * max_values) if signed else 0.
+        delta = (max_values - min_values) / 2.**num_bits
+        # delta = (max_values - min_values) / (2.**num_bits - 1)
+        qmin, qmax = 0.0, 2.**num_bits - 1
         with torch.no_grad():
             output.sub_(min_values).div_(delta).clamp_(qmin,qmax).round_()
 
@@ -135,23 +136,20 @@ def quantize_grad(x, num_bits=None, qparams=None,
 class Quantize(nn.Module):
     """docstring for Quantize"""
 
-    def __init__(self, num_bits=8, num_bits_grad=32,
-                 shape_measure=(1,), flatten_dims=_DEFAULT_FLATTEN, grad_flatten_dims=_DEFAULT_FLATTEN_GRAD,
+    def __init__(self, num_bits=8, shape_measure=(1,), flatten_dims=_DEFAULT_FLATTEN,
                  dequantize=True, input_signed=False, stochastic=False, momentum=0.1):
         super(Quantize, self).__init__()
         self.register_buffer('running_max_values', torch.zeros(*shape_measure))
         self.flatten_dims = flatten_dims
-        self.grad_flatten_dims = grad_flatten_dims
         self.momentum = momentum
         self.dequantize = dequantize
         self.input_signed = input_signed
         self.stochastic = stochastic
         self.num_bits = num_bits
-        self.num_bits_grad = num_bits_grad
 
     def forward(self, input, qparams=None):
 
-        # quantize input
+        # Quantize input
         if self.num_bits is not None and self.num_bits < 32:
             if self.training:
                 if qparams is None:
@@ -168,99 +166,8 @@ class Quantize(nn.Module):
         else:
             q_input = input
 
-        # quantize grad
-        if self.training and self.num_bits_grad is not None and self.num_bits_grad < 32:
-            q_input = quantize_grad(
-                q_input, num_bits=self.num_bits_grad, flatten_dims=self.grad_flatten_dims)
-
         return q_input
 
-
-class RangeBN(nn.Module):
-    # this is normalized RangeBN
-
-    def __init__(self, num_features, dim=1, momentum=0.1, affine=True, num_chunks=16, eps=1e-5, num_bits=8, num_bits_grad=8):
-        super(RangeBN, self).__init__()
-        self.register_buffer('running_mean', torch.zeros(num_features))
-        self.register_buffer('running_var', torch.zeros(num_features))
-
-        self.momentum = momentum
-        self.dim = dim
-        if affine:
-            self.bias = nn.Parameter(torch.Tensor(num_features))
-            self.weight = nn.Parameter(torch.Tensor(num_features))
-        self.num_bits = num_bits
-        self.num_bits_grad = num_bits_grad
-        self.quantize_input = QuantMeasure(
-            self.num_bits, inplace=True, shape_measure=(1, 1, 1, 1), flatten_dims=(1, -1))
-        self.eps = eps
-        self.num_chunks = num_chunks
-        self.reset_params()
-
-    def reset_params(self):
-        if self.weight is not None:
-            self.weight.data.uniform_()
-        if self.bias is not None:
-            self.bias.data.zero_()
-
-    def forward(self, x):
-        x = self.quantize_input(x)
-        if x.dim() == 2:  # 1d
-            x = x.unsqueeze(-1,).unsqueeze(-1)
-
-        if self.training:
-            B, C, H, W = x.shape
-            y = x.transpose(0, 1).contiguous()  # C x B x H x W
-            y = y.view(C, self.num_chunks, (B * H * W) // self.num_chunks)
-            mean_max = y.max(-1)[0].mean(-1)  # C
-            mean_min = y.min(-1)[0].mean(-1)  # C
-            mean = y.view(C, -1).mean(-1)  # C
-            scale_fix = (0.5 * 0.35) * (1 + (math.pi * math.log(4)) **
-                                        0.5) / ((2 * math.log(y.size(-1))) ** 0.5)
-
-            scale = (mean_max - mean_min) * scale_fix
-            with torch.no_grad():
-                self.running_mean.mul_(self.momentum).add_(
-                    mean * (1 - self.momentum))
-
-                self.running_var.mul_(self.momentum).add_(
-                    scale * (1 - self.momentum))
-        else:
-            mean = self.running_mean
-            scale = self.running_var
-        # scale = quantize(scale, num_bits=self.num_bits, min_value=float(
-        #     scale.min()), max_value=float(scale.max()))
-        out = (x - mean.view(1, -1, 1, 1)) / \
-            (scale.view(1, -1, 1, 1) + self.eps)
-
-        if self.weight is not None:
-            qweight = self.weight
-            # qweight = quantize(self.weight, num_bits=self.num_bits,
-            #                    min_value=float(self.weight.min()),
-            #                    max_value=float(self.weight.max()))
-            out = out * qweight.view(1, -1, 1, 1)
-
-        if self.bias is not None:
-            qbias = self.bias
-            # qbias = quantize(self.bias, num_bits=self.num_bits)
-            out = out + qbias.view(1, -1, 1, 1)
-        if self.num_bits_grad is not None:
-            out = quantize_grad(
-                out, num_bits=self.num_bits_grad, flatten_dims=(1, -1))
-
-        if out.size(3) == 1 and out.size(2) == 1:
-            out = out.squeeze(-1).squeeze(-1)
-        return out
-
-
-class RangeBN1d(RangeBN):
-    # this is normalized RangeBN
-
-    def __init__(self, num_features, dim=1, momentum=0.1, affine=True, num_chunks=16, eps=1e-5, num_bits=8, num_bits_grad=8):
-        super(RangeBN1d, self).__init__(num_features, dim, momentum,
-                                        affine, num_chunks, eps, num_bits, num_bits_grad)
-        self.quantize_input = QuantMeasure(
-            self.num_bits, inplace=True, shape_measure=(1, 1), flatten_dims=(1, -1))
 
 if __name__ == '__main__':
     x = torch.rand(2, 3)

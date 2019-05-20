@@ -8,7 +8,7 @@ from torch.nn import Linear, Conv2d
 from torch.nn.modules.utils import _pair
 from torch.autograd import Function
 
-from models.quantize import calculate_qparams, quantize, quantize_grad
+from quantize import calculate_qparams, quantize, quantize_grad
 
 
 # Inherit from Function
@@ -16,12 +16,12 @@ class PredictiveForwardMixingFunction(Function):
 
     # Note that both forward and backward are @staticmethods
     @staticmethod
-    def forward(ctx, q_out, msb_out, msb_bits_grad):
+    def forward(ctx, q_out, msb_out, predictive_forward, predictive_backward): # , msb_bits_grad):
         ctx.save_for_backward(msb_out)
-        ctx.msb_bits_grad = msb_bits_grad
+        ctx.predictive_backward = predictive_backward
 
-        if msb_out is None:
-            return q_out.clone()
+        if msb_out is None or not predictive_forward:
+            return q_out
         else:
             with torch.no_grad():
                 nne_locs = (msb_out >= 0).detach().float()
@@ -31,17 +31,13 @@ class PredictiveForwardMixingFunction(Function):
     @staticmethod
     def backward(ctx, grad_output):
         msb_out = ctx.saved_tensors[0]
-        msb_bits_grad = ctx.msb_bits_grad
-        grad_q_out = grad_msb_out = None
-
+        grad_q_out = grad_output
+        grad_msb_out = None
         with torch.no_grad():
-            grad_q_out = grad_output.clone()
-            if msb_out is not None:
-                grad_msb_out = quantize(
-                    grad_output.clone(), num_bits=msb_bits_grad,
-                    flatten_dims=(1,-1), signed=True)
+            if msb_out is not None and ctx.predictive_backward:
+                grad_msb_out = grad_output.clone()
 
-            return grad_q_out, grad_msb_out, None
+        return grad_q_out, grad_msb_out, None, None
 
 
 class PredictiveWeightQuantFunction(Function):
@@ -49,10 +45,13 @@ class PredictiveWeightQuantFunction(Function):
     # Note that both forward and backward are @staticmethods
     @staticmethod
     def forward(ctx, weight, num_bits_weight, msb_bits_weight,
-                threshold, sparsify, sign):
+                threshold, sparsify, sign, writer, writer_prefix, counter):
         ctx.threshold = threshold
         ctx.sparsify = sparsify
         ctx.sign = sign
+        ctx.writer = writer
+        ctx.writer_prefix = writer_prefix
+        ctx.counter = counter
 
         with torch.no_grad():
             # q_weight
@@ -79,23 +78,38 @@ class PredictiveWeightQuantFunction(Function):
     @staticmethod
     def backward(ctx, *grad_output):
         grad_weight = None
+        writer = ctx.writer
+        prefix = ctx.writer_prefix
+        counter = ctx.counter
         grad_q_weight = grad_output[0]
         grad_msb_weight = grad_output[1] if len(grad_output) > 1 else None
+        if writer is not None and counter % 200 == 0:
+            writer.add_scalar(prefix+'/grad_q_weight_max', grad_q_weight.abs().max(), counter)
 
         with torch.no_grad():
             if grad_msb_weight is not None:
-                large_locs = (grad_msb_weight.abs() >= ctx.threshold).detach().float()
+                grad_msb_weight_abs = grad_msb_weight.abs()
+                if ctx.threshold < 0:
+                    ctx.threshold = -1.0 * ctx.threshold * grad_msb_weight_abs.max()
+                large_locs = (grad_msb_weight_abs >= ctx.threshold).detach().float()
                 if ctx.sparsify:
                     grad_weight = large_locs * grad_msb_weight
                 else:
                     grad_weight = large_locs * grad_msb_weight + (1 - large_locs) * grad_q_weight
+
+                grad_msb_sign_correct_locs = (grad_msb_weight.sign() == grad_q_weight.sign()).float()
+                grad_msb_sign_wrong = grad_msb_weight * (1 - grad_msb_sign_correct_locs)
+                if writer is not None and counter % 200 == 0:
+                    writer.add_scalar(prefix+'/grad_msb_weight_sign_wrong_max', grad_msb_sign_wrong.abs().max(), counter)
+                    writer.add_scalar(prefix+'/grad_msb_weight_sign_wrong_ratio', 1- float(grad_msb_sign_correct_locs.sum()) / float(grad_msb_sign_wrong.numel()), counter)
+                    writer.add_scalar(prefix+'/ratio_grad_msb_used', float(large_locs.sum()) / float(large_locs.numel()), counter)
             else:
-                grad_weight = grad_q_weight.clone()
+                grad_weight = grad_q_weight
 
             if ctx.sign:
                 grad_weight.sign_()
 
-            return grad_weight, None, None, None, None, None
+            return grad_weight, None, None, None, None, None, None, None, None
 
 
 class PredictiveBiasQuantFunction(Function):
@@ -149,15 +163,17 @@ class PredictiveBiasQuantFunction(Function):
             return grad_bias, None, None, None, None, None
 
 
-def mixing_output(q_out, msb_out, msb_bits_grad=16):
+def mixing_output(q_out, msb_out, predictive_forward, predictive_backward): # , msb_bits_grad=16):
     return PredictiveForwardMixingFunction.apply(
-        q_out, msb_out, msb_bits_grad)
+        q_out, msb_out, predictive_forward, predictive_backward) # , msb_bits_grad)
 
 
 def quant_weight(weight, num_bits_weight=8, msb_bits_weight=4,
-                 threshold=5e-4, sparsify=False, sign=False):
+                 threshold=5e-4, sparsify=False, sign=False,
+                 writer=None, writer_prefix="", counter=0):
     return PredictiveWeightQuantFunction.apply(
-        weight, num_bits_weight, msb_bits_weight, threshold, sparsify, sign)
+        weight, num_bits_weight, msb_bits_weight, threshold, sparsify, sign,
+        writer, writer_prefix, counter)
 
 
 def quant_bias(weight, num_bits_bias=16, msb_bits_bias=8,
