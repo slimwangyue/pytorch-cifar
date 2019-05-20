@@ -6,7 +6,7 @@ import torch.autograd as autograd
 import numpy as np
 import scipy.misc
 
-from conv import PredictiveConv2d
+from models.conv import PredictiveConv2d
 
 NUM_BITS = 8
 NUM_BITS_WEIGHT = 8
@@ -190,7 +190,7 @@ class ResNetRecurrentGateSP(nn.Module):
         self.fc = nn.Linear(64 * block.expansion, num_classes)
 
         for m in self.modules():
-            if isinstance(m, [nn.Conv2d, PredictiveConv2d]):
+            if isinstance(m, (nn.Conv2d, PredictiveConv2d)):
                 n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
                 m.weight.data.normal_(0, math.sqrt(2. / n))
             elif isinstance(m, nn.BatchNorm2d):
@@ -235,8 +235,9 @@ class ResNetRecurrentGateSP(nn.Module):
 
         gate_layer = nn.Sequential(
             nn.AvgPool2d(pool_size),
-            conv1x1(self.inplanes, planes * block.expansion, stride=stride,
-                        input_signed=False, predictive_forward=False)
+            conv1x1(planes * block.expansion, self.embed_dim, stride=stride,
+                    input_signed=False, predictive_forward=False)
+        )
             # nn.Conv2d(in_channels=planes * block.expansion,
             #           out_channels=self.embed_dim,
             #           kernel_size=1,

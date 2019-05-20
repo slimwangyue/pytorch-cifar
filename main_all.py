@@ -26,6 +26,9 @@ from torch.optim import SGD
 from torch.optim.optimizer import required
 from models.new_resnet import cifar10_rnn_gate_74
 
+def str2bool(s):
+    return s.lower() in ['yes', '1', 'true', 'y']
+
 writer = SummaryWriter()
 model_names = sorted(name for name in models.__dict__
                      if name.islower() and not name.startswith('__')
