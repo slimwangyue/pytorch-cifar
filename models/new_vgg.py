@@ -4,8 +4,8 @@ import torch.nn as nn
 import numpy as np
 import math
 
-from models.new_conv import PredictiveSignConv2d
-from models.new_linear import PredictiveSignLinear
+from models.new_conv import PredictiveConv2d
+from models.new_linear import PredictiveLinear
 from models.quantize import Quantize
 
 cfg = {
@@ -18,32 +18,57 @@ cfg = {
 class VGG(nn.Module):
     def __init__(self, vgg_name,
                  num_bits, num_bits_weight, num_bits_bias, num_bits_grad,
-                 msb_bits, msb_bits_grad, msb_bits_weight, threshold,
-                 writer=None):
+                 predictive_forward, predictive_backward,
+                 msb_bits, msb_bits_weight, msb_bits_bias, msb_bits_grad,
+                 threshold, sparsify, sign, writer=None):
         super(VGG, self).__init__()
+        # feature extraction part
         self.features = self._make_layers(
             cfg[vgg_name],
             num_bits, num_bits_weight, num_bits_bias, num_bits_grad,
-            msb_bits, msb_bits_grad, msb_bits_weight, threshold)
-        self.classifier = PredictiveSignLinear(
-            512, 10, num_bits_weight=num_bits_weight, num_bits_bias=num_bits_bias)
-        # self.writer = writer
-        self.counter = 0
+            predictive_forward, predictive_backward,
+            msb_bits, msb_bits_weight, msb_bits_bias, msb_bits_grad,
+            threshold, sparsify, sign, writer=None)
+
+        # classifier part
+        # fc_input_quant = Quantize(num_bits=num_bits, num_bits_grad=num_bits_grad,
+        #                           shape_measure=(1,), flatten_dims=(1,-1), grad_flatten_dims=(1,-1),
+        #                           dequantize=True, input_signed=False, stochastic=False, momentum=0.1)
+        # fc_output_quant = Quantize(num_bits=num_bits, num_bits_grad=num_bits_grad,
+        #                            shape_measure=(1,), flatten_dims=(1,-1), grad_flatten_dims=(0,-1),
+        #                            dequantize=True, input_signed=False, stochastic=False, momentum=0.1)
+        # self.classifier = PredictiveLinear(
+        #     512, 10, num_bits_weight=num_bits_weight, num_bits_bias=num_bits_bias,
+        #     input_signed=False,
+        #     predictive_forward=predictive_forward, predictive_backward=predictive_backward,
+        #     msb_bits=msb_bits, msb_bits_weight=msb_bits_weight,
+        #     msb_bits_bias=msb_bits_bias, msb_bits_grad=msb_bits_grad,
+        #     threshold=threshold, sparsify=sparsify, sign=True, writer=writer)
+
+        # self.classifier = nn.Sequential(fc_input_quant, fc)#, fc_output_quant)
+        self.classifier = nn.Linear(512,10)
+
+        # writer
+        self.writer = writer
 
     def forward(self, x):
         out = self.features(x)
         out = out.view(out.size(0), -1)
+        # print(out.min())
         out = self.classifier(out)
         return out
 
     def _make_layers(self, cfg,
                      num_bits, num_bits_weight, num_bits_bias, num_bits_grad,
-                     msb_bits, msb_bits_grad, msb_bits_weight, threshold):
+                     predictive_forward, predictive_backward,
+                     msb_bits, msb_bits_weight, msb_bits_bias, msb_bits_grad,
+                     threshold, sparsify, sign, writer=None):
         layers = []
         # Input quantization. Inputs are signed after normalization.
         input_quant = Quantize(
-            num_bits=num_bits, num_bits_grad=num_bits_grad, shape_measure=(1,1,1,1,),
-            dequantize=True, signed=True, stochastic=False, momentum=0.1)
+            num_bits=num_bits, num_bits_grad=None, # NOTE: don't quantize grad for the input layer
+            shape_measure=(1,1,1,1,), flatten_dims=(1, -1),
+            dequantize=True, input_signed=True, stochastic=False, momentum=0.1)
         layers.append(input_quant)
         in_channels = 3
         for i, x in enumerate(cfg):
@@ -51,17 +76,18 @@ class VGG(nn.Module):
             if x == 'M':
                 layers += [nn.MaxPool2d(kernel_size=2, stride=2)]
             else:
-                conv2d = PredictiveSignConv2d(
+                conv2d = PredictiveConv2d(
                     in_channels, x, kernel_size=3, padding=1, bias=False,
-                    num_bits_weight=num_bits_weight, num_bits_bias=num_bits_bias,
-                    input_signed=input_signed,
-                    msb_bits=msb_bits, msb_bits_weight=msb_bits_weight,
-                    msb_bits_grad=msb_bits_grad, threshold=threshold)
+                    num_bits_weight=num_bits_weight, input_signed=input_signed,
+                    predictive_forward=predictive_forward, predictive_backward=predictive_backward,
+                    msb_bits=msb_bits, msb_bits_weight=msb_bits_weight, msb_bits_grad=msb_bits_grad,
+                    threshold=threshold, sparsify=sparsify, sign=sign)
 
                 # Activations after ReLU layers are unsigned
                 act_quant = Quantize(
-                    num_bits=num_bits, num_bits_grad=num_bits_grad, shape_measure=(1,1,1,1,),
-                    dequantize=True, signed=False, stochastic=False, momentum=0.1)
+                    num_bits=num_bits, num_bits_grad=num_bits_grad,
+                    shape_measure=(1,1,1,1,), flatten_dims=(1,-1), grad_flatten_dims=(1,-1),
+                    dequantize=True, input_signed=False, stochastic=False, momentum=0.1)
 
                 layers += [conv2d,
                            nn.BatchNorm2d(x),
@@ -70,11 +96,7 @@ class VGG(nn.Module):
 
                 in_channels = x
 
-        act_quant = Quantize(
-            num_bits=num_bits, num_bits_grad=num_bits_grad, shape_measure=(1,1,1,1,),
-            dequantize=True, signed=False, stochastic=False, momentum=0.1)
-        layers += [nn.AvgPool2d(kernel_size=1, stride=1),
-                   act_quant]
+        layers += [nn.AvgPool2d(kernel_size=1, stride=1)]
 
         return nn.Sequential(*layers)
 

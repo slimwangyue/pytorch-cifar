@@ -61,27 +61,14 @@ class FPQuantizeFunction(InplaceFunction):
         num_bits = qparams.num_bits
         max_values = qparams.max_values
         min_values = - max_values if signed else 0.
-        delta = (max_values - min_values) / 2.**num_bits
+        delta = (max_values - min_values) / (2.**num_bits - 1)
         qmin, qmax = 0.0, 2**num_bits - 1
         with torch.no_grad():
-            # output.clamp_(min_values, max_values)
-            # max_locs = (output == max_values).float()
-            # output.sub_(min_values).div_(delta).round_().sub_(max_locs)
             output.sub_(min_values).div_(delta).clamp_(qmin,qmax).round_()
 
             if dequantize:
                 output.mul_(delta).add_(min_values)
 
-            # output_abs.add_(qmin * scale - zero_point).div_(scale)
-            # if stochastic:
-            #     noise = output_abs.new(output.shape).uniform_(-0.5, 0.5)
-            #     output_abs.add_(noise)
-            # # quantize
-            # output_abs.clamp_(qmin, qmax).round_()
-
-            # if dequantize:
-            #     output.mul_(scale).add_(
-            #         zero_point - qmin * scale)  # dequantize
         return output
 
     @staticmethod
@@ -148,14 +135,16 @@ def quantize_grad(x, num_bits=None, qparams=None,
 class Quantize(nn.Module):
     """docstring for Quantize"""
 
-    def __init__(self, num_bits=8, num_bits_grad=32, shape_measure=(1,),
-                 dequantize=True, signed=False, stochastic=False, momentum=0.1):
+    def __init__(self, num_bits=8, num_bits_grad=32,
+                 shape_measure=(1,), flatten_dims=_DEFAULT_FLATTEN, grad_flatten_dims=_DEFAULT_FLATTEN_GRAD,
+                 dequantize=True, input_signed=False, stochastic=False, momentum=0.1):
         super(Quantize, self).__init__()
         self.register_buffer('running_max_values', torch.zeros(*shape_measure))
-        # self.register_buffer('running_range', torch.zeros(*shape_measure))
+        self.flatten_dims = flatten_dims
+        self.grad_flatten_dims = grad_flatten_dims
         self.momentum = momentum
         self.dequantize = dequantize
-        self.signed = signed
+        self.input_signed = input_signed
         self.stochastic = stochastic
         self.num_bits = num_bits
         self.num_bits_grad = num_bits_grad
@@ -163,63 +152,28 @@ class Quantize(nn.Module):
     def forward(self, input, qparams=None):
 
         # quantize input
-        if self.num_bits < 32:
+        if self.num_bits is not None and self.num_bits < 32:
             if self.training:
                 if qparams is None:
                     qparams = calculate_qparams(
-                        input, num_bits=self.num_bits, flatten_dims=(1,-1), reduce_dim=0)
+                        input, num_bits=self.num_bits, flatten_dims=self.flatten_dims, reduce_dim=0)
                 with torch.no_grad():
-                    momentum = self.momentum
-                    self.running_max_values.mul_(momentum).add_(
-                        qparams.max_values * (1 - momentum))
+                    self.running_max_values.mul_(self.momentum).add_(
+                        qparams.max_values * (1 - self.momentum))
             else:
                 qparams = QParams(max_values=self.running_max_values,
                                   num_bits=self.num_bits)
             q_input = quantize(input, qparams=qparams, dequantize=self.dequantize,
-                               signed=self.signed, stochastic=self.stochastic, inplace=False)
+                               signed=self.input_signed, stochastic=self.stochastic, inplace=False)
         else:
             q_input = input
 
         # quantize grad
-        if self.training and self.num_bits_grad < 32:
+        if self.training and self.num_bits_grad is not None and self.num_bits_grad < 32:
             q_input = quantize_grad(
-                q_input, num_bits=self.num_bits_grad, flatten_dims=(1, -1))
+                q_input, num_bits=self.num_bits_grad, flatten_dims=self.grad_flatten_dims)
 
         return q_input
-
-
-class QLinear(nn.Linear):
-    """docstring for QConv2d."""
-
-    def __init__(self, in_features, out_features, bias=True,
-                 num_bits=8, num_bits_weight=8, num_bits_grad=8, biprecision=True):
-        super(QLinear, self).__init__(in_features, out_features, bias)
-        self.num_bits = num_bits
-        self.num_bits_weight = num_bits_weight or num_bits
-        self.num_bits_grad = num_bits_grad
-        self.biprecision = biprecision
-        self.quantize_input = QuantMeasure(self.num_bits)
-
-    def forward(self, input):
-        qinput = self.quantize_input(input)
-        weight_qparams = calculate_qparams(
-            self.weight, num_bits=self.num_bits_weight, flatten_dims=(1, -1), reduce_dim=None)
-        qweight = quantize(self.weight, qparams=weight_qparams)
-        if self.bias is not None:
-            qbias = quantize(
-                self.bias, num_bits=self.num_bits_weight + self.num_bits,
-                flatten_dims=(0, -1))
-        else:
-            qbias = None
-
-        if not self.biprecision or self.num_bits_grad is None:
-            output = F.linear(qinput, qweight, qbias)
-            if self.num_bits_grad is not None:
-                output = quantize_grad(
-                    output, num_bits=self.num_bits_grad)
-        else:
-            output = linear_biprec(qinput, qweight, qbias, self.num_bits_grad)
-        return output
 
 
 class RangeBN(nn.Module):

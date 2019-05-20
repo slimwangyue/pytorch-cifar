@@ -386,6 +386,7 @@ def run_training(args):
         adjust_learning_rate(args, optimizer, i)
 
         input, target = next(iter(train_loader))
+
         # measuring data loading time
         data_time.update(time.time() - end)
 
