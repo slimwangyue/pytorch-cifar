@@ -337,6 +337,8 @@ def run_training(args):
     skip_ratios = ListAverageMeter()
 
     end = time.time()
+    dataloader_iterator = iter(train_loader)
+
     for i in range(0, args.iters):
 
         rand_flag = random.uniform(0, 1) > 0.5
@@ -414,7 +416,11 @@ def run_training(args):
         model.train()
         adjust_learning_rate(args, optimizer, i)
 
-        input, target = next(iter(train_loader))
+        try:
+            input, target = next(dataloader_iterator)
+        except StopIteration:
+            dataloader_iterator = iter(train_loader)
+            input, target = next(dataloader_iterator)
 
         # measuring data loading time
         data_time.update(time.time() - end)
