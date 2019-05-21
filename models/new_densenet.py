@@ -28,7 +28,7 @@ SPARSIFY = False
 SIGN = True
 WRITER = None
 
-__all__ = ['DenseNet', 'densenet121', 'densenet169', 'densenet201', 'densenet161']
+__all__ = ['DenseNet', 'new_densenet121', 'densenet169', 'densenet201', 'densenet161']
 
 
 model_urls = {
