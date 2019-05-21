@@ -8,7 +8,7 @@ from torch.nn import Linear, Conv2d
 from torch.nn.modules.utils import _pair
 from torch.autograd import Function
 
-from quantize import calculate_qparams, quantize, quantize_grad
+from models.quantize import calculate_qparams, quantize, quantize_grad
 
 
 # Inherit from Function

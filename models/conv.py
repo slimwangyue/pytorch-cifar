@@ -9,8 +9,8 @@ from torch.nn.grad import conv2d_input, conv2d_weight
 from torch.nn.modules.utils import _pair
 from torch.autograd import Function
 
-from quantize import calculate_qparams, quantize, quantize_grad, Quantize
-from predictive import mixing_output, quant_weight
+from models.quantize import calculate_qparams, quantize, quantize_grad, Quantize
+from models.predictive import mixing_output, quant_weight
 
 
 def conv2d_biprec(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1, num_bits_grad=None):
