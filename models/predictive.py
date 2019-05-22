@@ -83,8 +83,8 @@ class PredictiveWeightQuantFunction(Function):
         counter = ctx.counter
         grad_q_weight = grad_output[0]
         grad_msb_weight = grad_output[1] if len(grad_output) > 1 else None
-        if writer is not None and counter % 200 == 0:
-            writer.add_scalar(prefix+'/grad_q_weight_max', grad_q_weight.abs().max(), counter)
+        # if writer is not None and counter % 400 == 0:
+            # writer.add_scalar(prefix+'/grad_q_weight_max', grad_q_weight.abs().max(), counter)
 
         with torch.no_grad():
             if grad_msb_weight is not None:
@@ -99,9 +99,9 @@ class PredictiveWeightQuantFunction(Function):
 
                 grad_msb_sign_correct_locs = (grad_msb_weight.sign() == grad_q_weight.sign()).float()
                 grad_msb_sign_wrong = grad_msb_weight * (1 - grad_msb_sign_correct_locs)
-                if writer is not None and counter % 200 == 0:
-                    writer.add_scalar(prefix+'/grad_msb_weight_sign_wrong_max', grad_msb_sign_wrong.abs().max(), counter)
-                    writer.add_scalar(prefix+'/grad_msb_weight_sign_wrong_ratio', 1- float(grad_msb_sign_correct_locs.sum()) / float(grad_msb_sign_wrong.numel()), counter)
+                if writer is not None and counter % 400 == 0:
+                    # writer.add_scalar(prefix+'/grad_msb_weight_sign_wrong_max', grad_msb_sign_wrong.abs().max(), counter)
+                    # writer.add_scalar(prefix+'/grad_msb_weight_sign_wrong_ratio', 1- float(grad_msb_sign_correct_locs.sum()) / float(grad_msb_sign_wrong.numel()), counter)
                     writer.add_scalar(prefix+'/ratio_grad_msb_used', float(large_locs.sum()) / float(large_locs.numel()), counter)
             else:
                 grad_weight = grad_q_weight
