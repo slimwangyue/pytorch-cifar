@@ -24,6 +24,8 @@ SPARSIFY = False
 SIGN = True
 WRITER = None
 
+WRITER_PREFIX_COUNTER = 0
+
 
 def conv1x1(in_planes, out_planes, stride=1,
             input_signed=True, predictive_forward=True, writer_prefix=""):
@@ -56,14 +58,14 @@ def conv3x3(in_planes, out_planes, stride=1,
 class BasicBlock(nn.Module):
     expansion = 1
 
-    def __init__(self, inplanes, planes, stride=1, downsample=None):
+    def __init__(self, inplanes, planes, stride=1, downsample=None, writer_prefix=""):
         super(BasicBlock, self).__init__()
         self.conv1 = conv3x3(inplanes, planes, stride, input_signed=False,
-                             predictive_forward=False)
+                             predictive_forward=False, writer_prefix=writer_prefix+'_conv1')
         self.bn1 = nn.BatchNorm2d(planes)
         self.relu = nn.ReLU(inplace=True)
         self.conv2 = conv3x3(planes, planes, input_signed=False,
-                             predictive_forward=False)
+                             predictive_forward=False, writer_prefix=writer_prefix+'_conv2')
         self.bn2 = nn.BatchNorm2d(planes)
         self.downsample = downsample
         self.stride = stride
@@ -174,16 +176,16 @@ class ResNetRecurrentGateSP(nn.Module):
         super(ResNetRecurrentGateSP, self).__init__()
 
         self.num_layers = layers
-        self.conv1 = conv3x3(3, 16, input_signed=True, predictive_forward=False)
+        self.conv1 = conv3x3(3, 16, input_signed=True, predictive_forward=False, writer_prefix='conv1')
         self.bn1 = nn.BatchNorm2d(16)
         self.relu = nn.ReLU(inplace=True)
 
         self.embed_dim = embed_dim
         self.hidden_dim = hidden_dim
 
-        self._make_group(block, 16, layers[0], group_id=1, pool_size=32)
-        self._make_group(block, 32, layers[1], group_id=2, pool_size=16)
-        self._make_group(block, 64, layers[2], group_id=3, pool_size=8)
+        self._make_group(block, 16, layers[0], group_id=1, pool_size=32, writer_prefix='group_1')
+        self._make_group(block, 32, layers[1], group_id=2, pool_size=16, writer_prefix='group_2')
+        self._make_group(block, 64, layers[2], group_id=3, pool_size=8, writer_prefix='group_3')
 
         # define recurrent gating module
         self.avgpool = nn.AvgPool2d(8)
@@ -203,7 +205,7 @@ class ResNetRecurrentGateSP(nn.Module):
     def install_gate(self):
         self.control = RNNGate(self.embed_dim, self.hidden_dim, rnn_type='lstm', output_channel=1)
 
-    def _make_group(self, block, planes, layers, group_id=1, pool_size=16):
+    def _make_group(self, block, planes, layers, group_id=1, pool_size=16, writer_prefix=''):
         """ Create the whole group"""
         for i in range(layers):
             if group_id > 1 and i == 0:
@@ -212,19 +214,19 @@ class ResNetRecurrentGateSP(nn.Module):
                 stride = 1
 
             meta = self._make_layer_v2(block, planes, stride=stride,
-                                       pool_size=pool_size)
+                                       pool_size=pool_size, writer_prefix=writer_prefix)
 
             setattr(self, 'group{}_ds{}'.format(group_id, i), meta[0])
             setattr(self, 'group{}_layer{}'.format(group_id, i), meta[1])
             setattr(self, 'group{}_gate{}'.format(group_id, i), meta[2])
 
-    def _make_layer_v2(self, block, planes, stride=1, pool_size=16):
+    def _make_layer_v2(self, block, planes, stride=1, pool_size=16, writer_prefix=''):
         """ create one block and optional a gate module """
         downsample = None
         if stride != 1 or self.inplanes != planes * block.expansion:
             downsample = nn.Sequential(
                 conv1x1(self.inplanes, planes * block.expansion, stride=stride,
-                        input_signed=False, predictive_forward=False),
+                        input_signed=False, predictive_forward=False, writer_prefix=writer_prefix+'_downsample'),
                 # nn.Conv2d(self.inplanes, planes * block.expansion,
                 #           kernel_size=1, stride=stride, bias=False),
                 nn.BatchNorm2d(planes * block.expansion),
@@ -236,7 +238,7 @@ class ResNetRecurrentGateSP(nn.Module):
         gate_layer = nn.Sequential(
             nn.AvgPool2d(pool_size),
             conv1x1(planes * block.expansion, self.embed_dim, stride=stride,
-                    input_signed=False, predictive_forward=False)
+                    input_signed=False, predictive_forward=False, writer_prefix=writer_prefix+'_gate')
         )
             # nn.Conv2d(in_channels=planes * block.expansion,
             #           out_channels=self.embed_dim,
@@ -347,6 +349,7 @@ def cifar10_rnn_gate_74(pretrained=False, **kwargs):
     print('threshold:', kwargs['threshold'])
     print('sparsify:', kwargs['sparsify'])
     print('sign:', kwargs['sign'])
+    print('writer:', kwargs['writer'])
 
     NUM_BITS = kwargs.pop('num_bits', 8)
     NUM_BITS_WEIGHT = kwargs.pop('num_bits_weight', 8)
@@ -360,7 +363,7 @@ def cifar10_rnn_gate_74(pretrained=False, **kwargs):
     THRESHOLD = kwargs.pop('threshold', 5e-4)
     SPARSIFY = kwargs.pop('sparsify', False)
     SIGN = kwargs.pop('sign', True)
-    WRITER = None
+    WRITER = kwargs.pop('writer', None)
 
     model = ResNetRecurrentGateSP(BasicBlock, [12, 12, 12], num_classes=10,
                                   embed_dim=10, hidden_dim=10)

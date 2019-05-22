@@ -180,6 +180,7 @@ def main():
         'threshold': args.threshold,
         'sparsify': args.sparsify,
         'sign': args.sign,
+        'writer': writer,
     }
 
     save_path = args.save_path = os.path.join(args.save_folder, args.arch)
