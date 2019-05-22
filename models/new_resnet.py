@@ -372,6 +372,49 @@ def cifar10_rnn_gate_74(pretrained=False, **kwargs):
 
 def cifar10_rnn_gate_110(pretrained=False,  **kwargs):
     """SkipNet-110 with Recurrent Gate"""
+
+    global NUM_BITS
+    global NUM_BITS_WEIGHT
+    global NUM_BITS_GRAD
+    global BIPRECISION
+    global PREDICTIVE_FORWARD
+    global PREDICTIVE_BACKWARD
+    global MSB_BITS
+    global MSB_BITS_WEIGHT
+    global MSB_BITS_GRAD
+    global THRESHOLD
+    global SPARSIFY
+    global SIGN
+    global WRITER
+
+    print('num_bits:', kwargs['num_bits'])
+    print('num_bits_weight:', kwargs['num_bits_weight'])
+    print('num_bits_grad:', kwargs['num_bits_grad'])
+    print('biprecision:', kwargs['biprecision'])
+    print('predictive_forward:', kwargs['predictive_forward'])
+    print('predictive_backward:', kwargs['predictive_backward'])
+    print('msb_bits:', kwargs['msb_bits'])
+    print('msb_bits_weight:', kwargs['msb_bits_weight'])
+    print('msb_bits_grad:', kwargs['msb_bits_grad'])
+    print('threshold:', kwargs['threshold'])
+    print('sparsify:', kwargs['sparsify'])
+    print('sign:', kwargs['sign'])
+    print('writer:', kwargs['writer'])
+
+    NUM_BITS = kwargs.pop('num_bits', 8)
+    NUM_BITS_WEIGHT = kwargs.pop('num_bits_weight', 8)
+    NUM_BITS_GRAD = kwargs.pop('num_bits_grad', None)
+    BIPRECISION = kwargs.pop('biprecision', False)
+    PREDICTIVE_FORWARD = kwargs.pop('predictive_forward', False)
+    PREDICTIVE_BACKWARD = kwargs.pop('predictive_backward', True)
+    MSB_BITS = kwargs.pop('msb_bits', 4)
+    MSB_BITS_WEIGHT = kwargs.pop('msb_bits_weight', 4)
+    MSB_BITS_GRAD = kwargs.pop('msb_bits_grad', 16)
+    THRESHOLD = kwargs.pop('threshold', 5e-4)
+    SPARSIFY = kwargs.pop('sparsify', False)
+    SIGN = kwargs.pop('sign', True)
+    WRITER = kwargs.pop('writer', None)
+
     model = ResNetRecurrentGateSP(BasicBlock, [18, 18, 18], num_classes=10,
                                   embed_dim=10, hidden_dim=10)
     return model
@@ -401,6 +444,49 @@ def cifar100_rnn_gate_74(pretrained=False, **kwargs):
 
 def cifar100_rnn_gate_110(pretrained=False, **kwargs):
     """SkipNet-110 with Recurrent Gate """
+
+    global NUM_BITS
+    global NUM_BITS_WEIGHT
+    global NUM_BITS_GRAD
+    global BIPRECISION
+    global PREDICTIVE_FORWARD
+    global PREDICTIVE_BACKWARD
+    global MSB_BITS
+    global MSB_BITS_WEIGHT
+    global MSB_BITS_GRAD
+    global THRESHOLD
+    global SPARSIFY
+    global SIGN
+    global WRITER
+
+    print('num_bits:', kwargs['num_bits'])
+    print('num_bits_weight:', kwargs['num_bits_weight'])
+    print('num_bits_grad:', kwargs['num_bits_grad'])
+    print('biprecision:', kwargs['biprecision'])
+    print('predictive_forward:', kwargs['predictive_forward'])
+    print('predictive_backward:', kwargs['predictive_backward'])
+    print('msb_bits:', kwargs['msb_bits'])
+    print('msb_bits_weight:', kwargs['msb_bits_weight'])
+    print('msb_bits_grad:', kwargs['msb_bits_grad'])
+    print('threshold:', kwargs['threshold'])
+    print('sparsify:', kwargs['sparsify'])
+    print('sign:', kwargs['sign'])
+    print('writer:', kwargs['writer'])
+
+    NUM_BITS = kwargs.pop('num_bits', 8)
+    NUM_BITS_WEIGHT = kwargs.pop('num_bits_weight', 8)
+    NUM_BITS_GRAD = kwargs.pop('num_bits_grad', None)
+    BIPRECISION = kwargs.pop('biprecision', False)
+    PREDICTIVE_FORWARD = kwargs.pop('predictive_forward', False)
+    PREDICTIVE_BACKWARD = kwargs.pop('predictive_backward', True)
+    MSB_BITS = kwargs.pop('msb_bits', 4)
+    MSB_BITS_WEIGHT = kwargs.pop('msb_bits_weight', 4)
+    MSB_BITS_GRAD = kwargs.pop('msb_bits_grad', 16)
+    THRESHOLD = kwargs.pop('threshold', 5e-4)
+    SPARSIFY = kwargs.pop('sparsify', False)
+    SIGN = kwargs.pop('sign', True)
+    WRITER = kwargs.pop('writer', None)
+
     model = ResNetRecurrentGateSP(BasicBlock, [18, 18, 18], num_classes=100,
                                   embed_dim=10, hidden_dim=10)
     return model
