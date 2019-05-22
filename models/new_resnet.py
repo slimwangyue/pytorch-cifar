@@ -214,7 +214,7 @@ class ResNetRecurrentGateSP(nn.Module):
                 stride = 1
 
             meta = self._make_layer_v2(block, planes, stride=stride,
-                                       pool_size=pool_size, writer_prefix=writer_prefix)
+                                       pool_size=pool_size, writer_prefix=writer_prefix+'_layer%d'%i)
 
             setattr(self, 'group{}_ds{}'.format(group_id, i), meta[0])
             setattr(self, 'group{}_layer{}'.format(group_id, i), meta[1])
@@ -231,7 +231,7 @@ class ResNetRecurrentGateSP(nn.Module):
                 #           kernel_size=1, stride=stride, bias=False),
                 nn.BatchNorm2d(planes * block.expansion),
             )
-        layer = block(self.inplanes, planes, stride, downsample)
+        layer = block(self.inplanes, planes, stride, downsample, writer_prefix=writer_prefix)
 
         self.inplanes = planes * block.expansion
 

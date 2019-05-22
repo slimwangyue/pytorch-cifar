@@ -29,7 +29,7 @@ from models.new_resnet import cifar10_rnn_gate_74
 def str2bool(s):
     return s.lower() in ['yes', '1', 'true', 'y']
 
-writer = SummaryWriter()
+# writer = SummaryWriter()
 model_names = sorted(name for name in models.__dict__
                      if name.islower() and not name.startswith('__')
                      and callable(models.__dict__[name])
@@ -167,23 +167,19 @@ skip_count = 0
 def main():
     args = parse_args()
 
-    args.signsgd_config = {
-        'num_bits': args.num_bits,
-        'num_bits_weight': args.num_bits_weight,
-        'num_bits_grad': args.num_bits_grad,
-        'biprecision': args.biprecision,
-        'predictive_forward': args.predictive_forward,
-        'predictive_backward': args.predictive_backward,
-        'msb_bits': args.msb_bits,
-        'msb_bits_weight': args.msb_bits_weight,
-        'msb_bits_grad': args.msb_bits_grad,
-        'threshold': args.threshold,
-        'sparsify': args.sparsify,
-        'sign': args.sign,
-        'writer': writer,
-    }
+    descriptions = [
+        args.arch,
+        'g:%d' % args.num_bits_grad,
+        'mg:%d' % args.msb_bits_grad,
+        'th:%f' % args.threshold,
+        'minimum:%f' % args.minimum,
+        'lr:%f' % args.lr,
+        'wd:%f' % args.weight_decay,
+        'sr:%f' % args.step_ratio,
+    ]
+    args.exp_desc = '-'.join(filter(None, descriptions))
 
-    save_path = args.save_path = os.path.join(args.save_folder, args.arch)
+    save_path = args.save_path = os.path.join(args.save_folder, args.arch, args.exp_desc)
     os.makedirs(save_path, exist_ok=True)
 
     # config logger file
@@ -275,8 +271,28 @@ def translate(dest, src):
 
 
 def run_training(args):
+
+    writer_path = os.path.join('runs', args.exp_desc + '-' + time.strftime('%Y-%m-%d-%H:%M:%S', time.localtime()))
+    writer = SummaryWriter(writer_path)
+
+    signsgd_config = {
+        'num_bits': args.num_bits,
+        'num_bits_weight': args.num_bits_weight,
+        'num_bits_grad': args.num_bits_grad,
+        'biprecision': args.biprecision,
+        'predictive_forward': args.predictive_forward,
+        'predictive_backward': args.predictive_backward,
+        'msb_bits': args.msb_bits,
+        'msb_bits_weight': args.msb_bits_weight,
+        'msb_bits_grad': args.msb_bits_grad,
+        'threshold': args.threshold,
+        'sparsify': args.sparsify,
+        'sign': args.sign,
+        'writer': writer,
+    }
+
     # create model
-    model = cifar10_rnn_gate_74(**args.signsgd_config)
+    model = cifar10_rnn_gate_74(**signsgd_config)
     # for m in model.parameters():
     #     m.requires_grad = False
     # for m in model.fc.parameters():
