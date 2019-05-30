@@ -73,13 +73,13 @@ class PredictiveConv2d(Conv2d):
 
     def forward(self, input):
         # See the autograd section for explanation of what happens here.
-        if self.input_signed is False:
-            try:
-                assert (input.detach().cpu().numpy() >= 0).all()
-            except AssertionError as e:
-                print(self.writer_prefix)
-                print(input.min())
-                exit()
+        # if self.input_signed is False:
+        #     try:
+        #         assert (input.detach().cpu().numpy() >= 0).all()
+        #     except AssertionError as e:
+        #         print(self.writer_prefix)
+        #         print(input.min())
+        #         exit()
 
 
         # Quantize `input` to `q_input`

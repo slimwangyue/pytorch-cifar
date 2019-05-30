@@ -189,6 +189,7 @@ class ResNetRecurrentGateSP(nn.Module):
 
         # define recurrent gating module
         self.avgpool = nn.AvgPool2d(8)
+        print(num_classes)
         self.fc = nn.Linear(64 * block.expansion, num_classes)
 
         for m in self.modules():
@@ -364,6 +365,8 @@ def cifar10_rnn_gate_74(pretrained=False, **kwargs):
     SPARSIFY = kwargs.pop('sparsify', False)
     SIGN = kwargs.pop('sign', True)
     WRITER = kwargs.pop('writer', None)
+
+    # assert 0
 
     model = ResNetRecurrentGateSP(BasicBlock, [12, 12, 12], num_classes=10,
                                   embed_dim=10, hidden_dim=10)

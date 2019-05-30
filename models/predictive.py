@@ -99,10 +99,11 @@ class PredictiveWeightQuantFunction(Function):
 
                 grad_msb_sign_correct_locs = (grad_msb_weight.sign() == grad_q_weight.sign()).float()
                 grad_msb_sign_wrong = grad_msb_weight * (1 - grad_msb_sign_correct_locs)
-                if writer is not None and counter % 400 == 0:
+                if writer is not None and counter % 100 == 0:
                     # writer.add_scalar(prefix+'/grad_msb_weight_sign_wrong_max', grad_msb_sign_wrong.abs().max(), counter)
                     # writer.add_scalar(prefix+'/grad_msb_weight_sign_wrong_ratio', 1- float(grad_msb_sign_correct_locs.sum()) / float(grad_msb_sign_wrong.numel()), counter)
                     writer.add_scalar(prefix+'/ratio_grad_msb_used', float(large_locs.sum()) / float(large_locs.numel()), counter)
+                    writer.add_scalar(prefix+'/grad_numel', float(large_locs.numel()), counter)
             else:
                 grad_weight = grad_q_weight
 

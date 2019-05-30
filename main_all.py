@@ -26,6 +26,8 @@ from torch.optim import SGD
 from torch.optim.optimizer import required
 from models.new_resnet import cifar10_rnn_gate_74
 
+from meters import accuracy
+
 def str2bool(s):
     return s.lower() in ['yes', '1', 'true', 'y']
 
@@ -34,6 +36,8 @@ model_names = sorted(name for name in models.__dict__
                      if name.islower() and not name.startswith('__')
                      and callable(models.__dict__[name])
                      )
+
+print(model_names)
 
 class CusSGD(SGD):
 
@@ -292,7 +296,8 @@ def run_training(args):
     }
 
     # create model
-    model = cifar10_rnn_gate_74(**signsgd_config)
+    model = models.__dict__[args.arch](args.pretrained, **signsgd_config)
+    # model = cifar10_rnn_gate_74(**signsgd_config)
     # for m in model.parameters():
     #     m.requires_grad = False
     # for m in model.fc.parameters():
@@ -353,6 +358,7 @@ def run_training(args):
     data_time = AverageMeter()
     losses = AverageMeter()
     top1 = AverageMeter()
+    top5 = AverageMeter()
     cp_energy_record = AverageMeter()
     skip_ratios = ListAverageMeter()
 
@@ -578,89 +584,109 @@ def validate(args, test_loader, model, criterion):
     batch_time = AverageMeter()
     losses = AverageMeter()
     top1 = AverageMeter()
+    top5 = AverageMeter()
     skip_ratios = ListAverageMeter()
     cp_energy_record = AverageMeter()
 
     # switch to evaluation mode
     model.eval()
     end = time.time()
-    for i, (input, target) in enumerate(test_loader):
-        if i == len(test_loader) - 1:
-            break
-        target = target.cuda()
-        input_var = Variable(input, volatile=True).cuda()
-        target_var = Variable(target, volatile=True).cuda()
-        # compute output
-        output, masks, logprobs = model(input_var)
+    with torch.no_grad():
+        for i, (input, target) in enumerate(test_loader):
+            if i == len(test_loader) - 1:
+                break
+            target = target.cuda()
+            input_var = Variable(input).cuda()
+            target_var = Variable(target).cuda()
+            # compute output
+            output, masks, logprobs = model(input_var)
 
-        energy_parameter = np.ones(35, )
-        # for index, item in enumerate(energy_parameter):
-        #     if index <= 10:
-        #         energy_parameter[index] /= 16
-        #     elif index <= 22:
-        #         energy_parameter[index] /= 32
-        #     else:
-        #         energy_parameter[index] /= 64
+            energy_parameter = np.ones(35, )
+            # for index, item in enumerate(energy_parameter):
+            #     if index <= 10:
+            #         energy_parameter[index] /= 16
+            #     elif index <= 22:
+            #         energy_parameter[index] /= 32
+            #     else:
+            #         energy_parameter[index] /= 64
 
-        energy_parameter /= energy_parameter.max()
+            energy_parameter /= energy_parameter.max()
 
-        energy_cost = 0
-        energy_all = 0
-        for layer in range(len(energy_parameter)):
-            energy_cost += masks[layer].sum() * energy_parameter[layer]
-            energy_all += reduce((lambda x, y: x * y), masks[layer].shape) * energy_parameter[layer]
-        cp_energy = (energy_cost.item() / energy_all.item()) * 100
+            energy_cost = 0
+            energy_all = 0
+            for layer in range(len(energy_parameter)):
+                energy_cost += masks[layer].sum() * energy_parameter[layer]
+                energy_all += reduce((lambda x, y: x * y), masks[layer].shape) * energy_parameter[layer]
+            cp_energy = (energy_cost.item() / energy_all.item()) * 100
 
-        skips = [mask.data.le(0.5).float().mean().item() for mask in masks]
+            skips = [mask.data.le(0.5).float().mean().item() for mask in masks]
 
-        if skip_ratios.len != len(skips):
-            skip_ratios.set_len(len(skips))
-        loss = criterion(output, target_var)
+            if skip_ratios.len != len(skips):
+                skip_ratios.set_len(len(skips))
+            loss = criterion(output, target_var)
 
-        # measure accuracy and record loss
-        prec1, = accuracy(output.data, target, topk=(1,))
-        top1.update(prec1.item(), input.size(0))
-        skip_ratios.update(skips, input.size(0))
-        losses.update(loss.data.item(), input.size(0))
-        batch_time.update(time.time() - end)
-        cp_energy_record.update(cp_energy, 1)
-        end = time.time()
+            # measure accuracy and record loss
+            prec1, prec5 = accuracy(output.data, target, topk=(1,5))
+            top1.update(prec1.item(), input.size(0))
+            top5.update(prec5.item(), input.size(0))
+            skip_ratios.update(skips, input.size(0))
+            losses.update(loss.data.item(), input.size(0))
+            batch_time.update(time.time() - end)
+            cp_energy_record.update(cp_energy, 1)
+            end = time.time()
 
-        if i % args.print_freq == 0 or (i == (len(test_loader) - 1)):
-            logging.info(
-                'Test: [{}/{}]\t'
-                'Time: {batch_time.val:.4f}({batch_time.avg:.4f})\t'
-                'Loss: {loss.val:.3f}({loss.avg:.3f})\t'
-                'Prec@1: {top1.val:.3f}({top1.avg:.3f})\t'
-                'Energy_ratio: {cp_energy_record.val:.3f}({cp_energy_record.avg:.3f})\t'.format(
-                    i, len(test_loader), batch_time=batch_time,
-                    loss=losses,
-                    top1=top1,
-                    cp_energy_record=cp_energy_record,
+            if i % args.print_freq == 0 or (i == (len(test_loader) - 1)):
+                logging.info(
+                    'Test: [{}/{}]\t'
+                    'Time: {batch_time.val:.4f}({batch_time.avg:.4f})\t'
+                    'Loss: {loss.val:.3f}({loss.avg:.3f})\t'
+                    'Prec@1: {top1.val:.3f}({top1.avg:.3f})\t'
+                    'Prec@5: {top1.val:.3f}({top5.avg:.3f})\t'
+                    'Energy_ratio: {cp_energy_record.val:.3f}({cp_energy_record.avg:.3f})\t'.format(
+                        i, len(test_loader), batch_time=batch_time,
+                        loss=losses,
+                        top1=top1, top5=top5,
+                        cp_energy_record=cp_energy_record,
+                    )
                 )
-            )
-    logging.info(' * Prec@1 {top1.avg:.3f}, Loss {loss.avg:.3f}'.format(
-        top1=top1, loss=losses))
+        logging.info(' * Prec@1 {top1.avg:.3f}, Loss {loss.avg:.3f}'.format(
+            top1=top1, loss=losses))
 
-    skip_summaries = []
-    for idx in range(skip_ratios.len):
-        # logging.info(
-        #     "{} layer skipping = {:.3f}".format(
-        #         idx,
-        #         skip_ratios.avg[idx],
-        #     )
-        # )
-        skip_summaries.append(1-skip_ratios.avg[idx])
-    # compute `computational percentage`
-    cp = ((sum(skip_summaries) + 1) / (len(skip_summaries) + 1)) * 100
-    logging.info('*** Computation Percentage: {:.3f} %'.format(cp))
+        skip_summaries = []
+        for idx in range(skip_ratios.len):
+            # logging.info(
+            #     "{} layer skipping = {:.3f}".format(
+            #         idx,
+            #         skip_ratios.avg[idx],
+            #     )
+            # )
+            skip_summaries.append(1-skip_ratios.avg[idx])
+        # compute `computational percentage`
+        cp = ((sum(skip_summaries) + 1) / (len(skip_summaries) + 1)) * 100
+        logging.info('*** Computation Percentage: {:.3f} %'.format(cp))
 
     return top1.avg
 
 
 def test_model(args):
+    signsgd_config = {
+        'num_bits': args.num_bits,
+        'num_bits_weight': args.num_bits_weight,
+        'num_bits_grad': args.num_bits_grad,
+        'biprecision': args.biprecision,
+        'predictive_forward': args.predictive_forward,
+        'predictive_backward': args.predictive_backward,
+        'msb_bits': args.msb_bits,
+        'msb_bits_weight': args.msb_bits_weight,
+        'msb_bits_grad': args.msb_bits_grad,
+        'threshold': args.threshold,
+        'sparsify': args.sparsify,
+        'sign': args.sign,
+        'writer': None,
+    }
+
     # create model
-    model = models.__dict__[args.arch](args.pretrained)
+    model = models.__dict__[args.arch](args.pretrained, **signsgd_config)
     model.install_gate()
     model = torch.nn.DataParallel(model).cuda()
 
@@ -684,13 +710,14 @@ def test_model(args):
                                     batch_size=args.batch_size,
                                     shuffle=False,
                                     num_workers=args.workers)
-    test_loader_v = prepare_test_data_v(dataset=args.dataset,
-                                    batch_size=args.batch_size,
-                                    shuffle=False,
-                                    num_workers=args.workers)
+    # test_loader_v = prepare_test_data_v(dataset=args.dataset,
+    #                                 batch_size=args.batch_size,
+    #                                 shuffle=False,
+    #                                 num_workers=args.workers)
     criterion = nn.CrossEntropyLoss().cuda()
 
-    validate(args, test_loader, model, criterion, test_loader_v)
+    validate(args, test_loader, model, criterion)
+    # validate(args, test_loader, model, criterion, test_loader)
 
 
 def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
