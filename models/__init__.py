@@ -13,4 +13,5 @@ from .preact_resnet import *
 from .mobilenet import *
 from .mobilenetv2 import *
 from .new_densenet import *
-from .new_resnet import *
+# from .new_resnet import *
+from .efficient_resnet import *
