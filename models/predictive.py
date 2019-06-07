@@ -109,6 +109,8 @@ class PredictiveWeightQuantFunction(Function):
 
             if ctx.sign:
                 grad_weight.sign_()
+                # grad_weight = quantize(grad_weight, num_bits=you_set,
+                #                        flatten_dims=(1,-1), signed=True)
 
             return grad_weight, None, None, None, None, None, None, None, None
 
