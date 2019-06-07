@@ -24,7 +24,8 @@ from functools import reduce
 from tensorboardX import SummaryWriter
 from torch.optim import SGD
 from torch.optim.optimizer import required
-from models.new_resnet import cifar10_rnn_gate_74
+# from models.new_resnet import cifar10_rnn_gate_74
+# from models.efficient_resnet import cifar10_rnn_gate_74
 
 from meters import accuracy
 
