@@ -214,46 +214,6 @@ class FPQuantizeGradFunction(InplaceFunction):
         return grad_input, None, None, None, None, None, None, None, None
 
 
-# class EfficientFPQuantizeGradFunction(Function):
-
-#     @staticmethod
-#     def forward(ctx, input, num_bits=32, qparams=None, flatten_dims=_DEFAULT_FLATTEN_GRAD,
-#                 reduce_dim=0, dequantize=True, signed=True, stochastic=True):
-#         ctx.num_bits = num_bits
-#         ctx.qparams = qparams
-#         ctx.flatten_dims = flatten_dims
-#         ctx.stochastic = stochastic
-#         ctx.dequantize = dequantize
-#         ctx.signed = signed
-#         ctx.reduce_dim = reduce_dim
-#         # ctx.inplace = T
-#         return input
-
-#     @staticmethod
-#     def backward(ctx, grad_output):
-
-#         if ctx.qparams is not None and ctx.qparams.num_bits >= 32:
-#             return grad_output
-
-#         if ctx.qparams is None:
-#             assert ctx.num_bits is not None
-#             if ctx.num_bits >= 32:
-#                 return grad_output
-
-#         qparams = ctx.qparams
-#         with torch.no_grad():
-#             if qparams is None:
-#                 qparams = calculate_qparams(
-#                     grad_output, num_bits=ctx.num_bits,
-#                     flatten_dims=ctx.flatten_dims, reduce_dim=ctx.reduce_dim,
-#                     reduce_type='extreme')
-
-#             grad_input = quantize(grad_output, num_bits=None,
-#                                   qparams=qparams, flatten_dims=ctx.flatten_dims, reduce_dim=ctx.reduce_dim,
-#                                   dequantize=True, signed=ctx.signed, stochastic=ctx.stochastic, inplace=False)
-#         return grad_input, None, None, None, None, None, None, None
-
-
 def quantize(x, num_bits=None, qparams=None,
              flatten_dims=_DEFAULT_FLATTEN, reduce_dim=0,
              dequantize=True, signed=False, stochastic=False, inplace=False):

@@ -3,8 +3,6 @@ import torch.nn as nn
 import math
 from torch.autograd import Variable
 import torch.autograd as autograd
-import numpy as np
-import scipy.misc
 
 from models.conv import PredictiveConv2d
 
@@ -27,8 +25,7 @@ WRITER = None
 WRITER_PREFIX_COUNTER = 0
 
 
-def conv1x1(in_planes, out_planes, stride=1,
-            input_signed=True, predictive_forward=True, writer_prefix=""):
+def conv1x1(in_planes, out_planes, stride=1, input_signed=True, predictive_forward=True, writer_prefix=""):
     "1x1 convolution with no padding"
     predictive_forward = PREDICTIVE_FORWARD and predictive_forward
     return PredictiveConv2d(
@@ -41,8 +38,7 @@ def conv1x1(in_planes, out_planes, stride=1,
         writer=WRITER, writer_prefix=writer_prefix)
 
 
-def conv3x3(in_planes, out_planes, stride=1,
-            input_signed=False, predictive_forward=True, writer_prefix=""):
+def conv3x3(in_planes, out_planes, stride=1, input_signed=False, predictive_forward=True, writer_prefix=""):
     "3x3 convolution with padding"
     predictive_forward = PREDICTIVE_FORWARD and predictive_forward
     return PredictiveConv2d(
@@ -86,11 +82,6 @@ class BasicBlock(nn.Module):
         out += residual
         out = self.relu(out)
         return out
-
-########################################
-# SkipNet+SP with Recurrent Gate       #
-########################################
-
 
 # For Recurrent Gate
 def repackage_hidden(h):
@@ -149,29 +140,11 @@ class RNNGate(nn.Module):
 
         disc_prob = disc_prob.view(batch_size, -1, 1, 1)
         return disc_prob, prob
-    #
-    # def forward(self, x, jump):
-    #     # Take the convolution output of each step
-    #     batch_size = x.size(0)
-    #     self.rnn.flatten_parameters()
-    #     out, self.hidden = self.rnn(x.view(1, batch_size, -1), self.hidden)
-    #
-    #     proj = self.proj(out.squeeze())
-    #     prob = self.prob(proj)
-    #     if jump != -1:
-    #         prob = torch.nn.functional.avg_pool1d(prob.view(batch_size, 1, -1), kernel_size=jump, stride=jump, padding=0)
-    #     prob.squeeze()
-    #
-    #     disc_prob = (prob > 0.5).float().detach() - prob.detach() + prob
-    #
-    #     disc_prob = disc_prob.view(batch_size, -1, 1, 1)
-    #     return disc_prob, prob
 
 
 class ResNetRecurrentGateSP(nn.Module):
     """SkipNet with Recurrent Gate Model"""
-    def __init__(self, block, layers, num_classes=10, embed_dim=10,
-                 hidden_dim=10, gate_type='rnn'):
+    def __init__(self, block, layers, num_classes=10, embed_dim=10, hidden_dim=10):
         self.inplanes = 16
         super(ResNetRecurrentGateSP, self).__init__()
 
@@ -228,8 +201,6 @@ class ResNetRecurrentGateSP(nn.Module):
             downsample = nn.Sequential(
                 conv1x1(self.inplanes, planes * block.expansion, stride=stride,
                         input_signed=True, predictive_forward=False, writer_prefix=writer_prefix+'_downsample'),
-                # nn.Conv2d(self.inplanes, planes * block.expansion,
-                #           kernel_size=1, stride=stride, bias=False),
                 nn.BatchNorm2d(planes * block.expansion),
             )
         layer = block(self.inplanes, planes, stride, downsample, writer_prefix=writer_prefix)
@@ -241,10 +212,6 @@ class ResNetRecurrentGateSP(nn.Module):
             conv1x1(planes * block.expansion, self.embed_dim, stride=stride,
                     input_signed=True, predictive_forward=False, writer_prefix=writer_prefix+'_gate')
         )
-            # nn.Conv2d(in_channels=planes * block.expansion,
-            #           out_channels=self.embed_dim,
-            #           kernel_size=1,
-            #           stride=1))
         if downsample:
             return downsample, layer, gate_layer
         else:
@@ -252,14 +219,10 @@ class ResNetRecurrentGateSP(nn.Module):
 
     def forward(self, x):
 
-        img_list = []
-
-
         batch_size = x.size(0)
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
-
 
         # reinitialize hidden units
         self.control.hidden = self.control.init_hidden(batch_size)
@@ -281,13 +244,6 @@ class ResNetRecurrentGateSP(nn.Module):
                 if getattr(self, 'group{}_ds{}'.format(g+1, i)) is not None:
                     prev = getattr(self, 'group{}_ds{}'.format(g+1, i))(prev)
 
-                # if g == 0 and i == 6:
-                #     for j in range(16):
-                #         img_list.append(x[99][j].cpu().detach().numpy())
-                #         new_img = img_list[j]
-                #         new_img = (new_img - new_img.min()) / (new_img.max() - new_img.min()) * 255
-                #         scipy.misc.imsave('/home/yw68/skipnet/cifar/images_fm/{}_no_test.png'.format(j), new_img)
-
                 x = getattr(self, 'group{}_layer{}'.format(g+1, i))(x)
                 # new mask is taking the current output
                 prev = x = mask.expand_as(x) * x \
@@ -296,10 +252,6 @@ class ResNetRecurrentGateSP(nn.Module):
                 gate_feature = getattr(self, 'group{}_gate{}'.format(g+1, i))(x)
                 # control = getattr(self, 'control{}'.format(min(3, g + 1 + (i == self.num_layers[g] - 1))))
                 mask, gprob = self.control(gate_feature)
-                # if i == self.num_layers[g] - 1 and g != 2:
-                #     mask, grob = self.control(gate_feature, int(64 / (2**(g+5))))
-                # else:
-                #     mask, grob = self.control(gate_feature, int(64 / (2**(g+4))))
                 gprobs.append(gprob)
                 masks.append(mask.squeeze())
 
@@ -314,14 +266,7 @@ class ResNetRecurrentGateSP(nn.Module):
 
 
 # For CIFAR-10
-def cifar10_rnn_gate_38(pretrained=False, **kwargs):
-    """SkipNet-38 with Recurrent Gate"""
-    model = ResNetRecurrentGateSP(BasicBlock, [6, 6, 6], num_classes=10,
-                                  embed_dim=10, hidden_dim=10)
-    return model
-
-
-def cifar10_rnn_gate_74(pretrained=False, **kwargs):
+def cifar10_rnn_gate_74(**kwargs):
     """SkipNet-74 with Recurrent Gate"""
 
     global NUM_BITS
@@ -366,14 +311,12 @@ def cifar10_rnn_gate_74(pretrained=False, **kwargs):
     SIGN = kwargs.pop('sign', True)
     WRITER = kwargs.pop('writer', None)
 
-    # assert 0
-
     model = ResNetRecurrentGateSP(BasicBlock, [12, 12, 12], num_classes=10,
                                   embed_dim=10, hidden_dim=10)
     return model
 
 
-def cifar10_rnn_gate_110(pretrained=False,  **kwargs):
+def cifar10_rnn_gate_110(**kwargs):
     """SkipNet-110 with Recurrent Gate"""
 
     global NUM_BITS
@@ -422,30 +365,10 @@ def cifar10_rnn_gate_110(pretrained=False,  **kwargs):
                                   embed_dim=10, hidden_dim=10)
     return model
 
-
-def cifar10_rnn_gate_152(pretrained=False,  **kwargs):
-    """SkipNet-152 with Recurrent Gate"""
-    model = ResNetRecurrentGateSP(BasicBlock, [25, 25, 25], num_classes=10,
-                                  embed_dim=10, hidden_dim=10)
-    return model
-
-
 # For CIFAR-100
-def cifar100_rnn_gate_38(pretrained=False, **kwargs):
-    """SkipNet-38 with Recurrent Gate"""
-    model = ResNetRecurrentGateSP(BasicBlock, [6, 6, 6], num_classes=100,
-                                  embed_dim=10, hidden_dim=10)
-    return model
 
 
-def cifar100_rnn_gate_74(pretrained=False, **kwargs):
-    """SkipNet-74 with Recurrent Gate"""
-    model = ResNetRecurrentGateSP(BasicBlock, [12, 12, 12], num_classes=100,
-                                  embed_dim=10, hidden_dim=10)
-    return model
-
-
-def cifar100_rnn_gate_110(pretrained=False, **kwargs):
+def cifar100_rnn_gate_110(**kwargs):
     """SkipNet-110 with Recurrent Gate """
 
     global NUM_BITS
@@ -494,10 +417,4 @@ def cifar100_rnn_gate_110(pretrained=False, **kwargs):
                                   embed_dim=10, hidden_dim=10)
     return model
 
-
-def cifar100_rnn_gate_152(pretrained=False, **kwargs):
-    """SkipNet-152 with Recurrent Gate"""
-    model = ResNetRecurrentGateSP(BasicBlock, [25, 25, 25], num_classes=100,
-                                  embed_dim=10, hidden_dim=10)
-    return model
 
